@@ -7,6 +7,7 @@ import java.util.*;
 
 public final class Oracle {
     static final Properties symbols = new Properties();
+    static final PrintStream observations = System.out; // Bootstrap redirects System.out to its logger.
     static int caseIndex = 0;
     static Class<?> type(String key) throws Exception { return Class.forName(symbols.getProperty(key)); }
     static Method method(String key, Class<?> owner, Class<?>... parameters) throws Exception {
@@ -21,11 +22,35 @@ public final class Oracle {
     static long hex(String value) { return Long.parseUnsignedLong(value, 16); }
     static String h64(long value) { return String.format(Locale.ROOT, "%016x", value); }
     static String h32(int value) { return String.format(Locale.ROOT, "%08x", value); }
-    static void emit(String value) { System.out.println("R\t" + caseIndex + "\t" + value); }
+    static void emit(String value) { observations.println("R\t" + caseIndex + "\t" + value); }
     static final Class<?>[] NONE = new Class<?>[0];
     static final Class<?>[] INT = {int.class};
     static final Class<?>[] LONG = {long.class};
     static final Class<?>[] XYZ = {int.class, int.class, int.class};
+    static boolean statesInitialized = false;
+
+    static void state(String[] fields) throws Exception {
+        if (!statesInitialized) {
+            staticCall("Shared.detect", "Shared", NONE);
+            staticCall("Bootstrap.boot", "Bootstrap", NONE);
+            statesInitialized = true;
+        }
+        Object map=type("Block").getField(symbols.getProperty("Block.stateMap")).get(null);
+        Object state=call("IdMap.byId",map,INT,Integer.parseInt(fields[1]));
+        if (state==null) { emit("state -1"); return; }
+        Collection<?> properties=(Collection<?>)call("State.properties",state,NONE);
+        for (Object property:properties) {
+            // A concrete property may be package-private; invoke its public base class.
+            String name=(String)method("Property.name",type("Property")).invoke(property);
+            if (!name.equals(fields[2])) continue;
+            Optional<?> value=(Optional<?>)method("Property.parse",type("Property"),String.class).invoke(property,fields[3]);
+            if (value.isEmpty()) { emit("state -1"); return; }
+            Object next=method("State.set",type("StateHolder"),type("Property"),Comparable.class).invoke(state,property,value.get());
+            int id=(int)staticCall("Block.stateId","Block",new Class<?>[]{type("BlockState")},next);
+            emit("state " + id); return;
+        }
+        emit("state -1");
+    }
 
     static Object random(String variant, long seed) throws Exception {
         if (variant.startsWith("worldgen-")) {
@@ -135,6 +160,7 @@ public final class Oracle {
                     case "pos": position(f); break;
                     case "storage": storage(f); break;
                     case "ticks": ticks(f); break;
+                    case "state": state(f); break;
                     case "mix": emit("mix " + h64((long)staticCall("Support.mix","Support",LONG,hex(f[1])))); break;
                     case "zero": {
                         Object source=type("Xoro").getConstructor(long.class,long.class).newInstance(0L,0L);

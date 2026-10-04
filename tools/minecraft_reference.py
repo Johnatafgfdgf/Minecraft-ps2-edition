@@ -12,6 +12,8 @@ LOCK = {
     'server_sha1': '59353fb40c36d304f2035d51e7d6e6baa98dc05c',
     'server_mappings_sha1': '03f8985492bda0afc0898465341eb0acef35f570',
     'client_sha1': '30c73b1c5da787909b2f73340419fdf13b9def88',
+    'asset_index_sha1': '9b16298b1dc0697878cec88bb2d96168f5239e4f',
+    'asset_index_id': '17',
     'server_url': 'https://piston-data.mojang.com/v1/objects/59353fb40c36d304f2035d51e7d6e6baa98dc05c/server.jar',
     'mappings_url': 'https://piston-data.mojang.com/v1/objects/03f8985492bda0afc0898465341eb0acef35f570/server.txt',
 }

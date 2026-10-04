@@ -24,9 +24,13 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - Fila de ticks pendentes por chunk, com identidade, deduplicação e prioridades.
 - Importação privada da referência oficial com verificação de hashes.
 - Harness que invoca os métodos do JAR original por reflection, sem copiar código.
+- Registro nativo de todos os block states/propriedades e transições equivalentes.
+- Gerador privado de registries, world data pack e conversão de texturas pessoais.
 
 **Paridade no host:** 1.313 cenários, 75.908 resultados iguais ao servidor original
-1.21.1. Isso não valida geração completa, redstone, física nem execução no console.
+1.21.1. Além disso, **33.721 comparações de transições de block states** coincidiram
+com `StateHolder.setValue` original, e todos os 26.684 estados foram conferidos
+contra o report do jogo. Isso não valida geração completa, redstone, física nem execução no console.
 O ELF foi compilado para Emotion Engine; boot e desempenho em PS2/PCSX2 ainda
 precisam ser medidos.
 
@@ -40,6 +44,7 @@ make parity  # após importar a referência e configurar JDK 21
 - [Correspondência com a arquitetura original](docs/PORT_MAPPING.md)
 - [Comportamentos analisados e limites dos testes](docs/PARITY.md)
 - [Próximas etapas do port](docs/ROADMAP.md)
+- [Pipeline privada de conteúdo e formatos](docs/CONTENT_PIPELINE.md)
 
 O projeto não é afiliado à Mojang ou à Microsoft. Seus arquivos originais não
 integram o repositório.

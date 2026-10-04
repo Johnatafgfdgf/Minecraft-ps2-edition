@@ -34,7 +34,7 @@ executar os métodos originais, com todas as bibliotecas do bundle verificadas.
 - **Fila por chunk:** identidade é (tipo canônico, posição). Um duplicado não
   antecipa/substitui um tick já existente. Ordem pending: trigger tick, prioridade,
   subTickOrder. Ao poll, a identidade fica disponível novamente. A coleta global
-  `LevelTicks` possui outra ordem e ainda precisa ser portata.
+  `LevelTicks` possui outra ordem e ainda precisa ser portada.
 
 ## Testes executados — 2026-10-04
 
@@ -48,6 +48,23 @@ de storage de 1 a 32 bits e filas com duplicados/prioridades.
 SHA-256 do stream de observações coincidentes:
 `fa74a1976354f3a9a71faf5eab60952cfb2f33ac8be101dc215c0903a9a0a796`.
 Inputs e resultados completos podem ser regenerados em `.local/parity/`.
+
+`make reference-data`: o data generator original foi executado. Todos os **1.060
+blocos e 26.684 states**, incluindo IDs, defaults e pares chave/valor, passaram
+pelo leitor nativo e coincidiram integralmente com `blocks.json` original. O MCSR
+gerado ocupa **607.985 bytes**, com 399 pares de propriedades e 118.970 referências.
+Foram preservados mapas de IDs de 78 registries e 6.796 entradas de dados num pack
+privado; estes dados ainda precisam dos interpreters de gameplay.
+
+`make registry-parity`: **33.721 cenários/resultados iguais** a chamadas originais
+de `StateHolder.setValue`, cobrindo todos os estados com propriedades, todos os
+valores sobre default states e entradas inválidas. SHA-256 das observações:
+`d8557171f49123d232e7f8515f3602c5cd8ab631dbb0ad1d26f5150ca7f10f47`.
+Isso verifica transição de estado, não callbacks, updates ou mecânicas dos blocos.
+Testes Python adicionais verificam arquivos truncados, IDs/offsets inválidos,
+CRC/offsets de packs e conversão de um PNG próprio com todas as linhas preservadas.
+O cliente não foi fornecido: o importador de assets não teve teste end-to-end
+contra um cliente legítimo nesta sessão.
 
 Build EE concluído com ps2dev v2.0.0 / GCC 15.2.0. ELF 32-bit little-endian MIPS,
 linkado com o startup/linkfile do PS2SDK. Essa evidência é **compilação**, não

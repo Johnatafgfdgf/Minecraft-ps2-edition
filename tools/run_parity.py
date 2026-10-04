@@ -8,7 +8,7 @@ import pathlib
 import random
 import shutil
 import subprocess
-from minecraft_reference import ROOT, REFERENCE, PRIVATE, load_reference
+from minecraft_reference import ROOT, REFERENCE, PRIVATE, load_reference, private_path
 
 
 def oracle_symbols(classes):
@@ -20,6 +20,9 @@ def oracle_symbols(classes):
         'RandomSource':'util.RandomSource', 'BlockPos':'core.BlockPos', 'SectionPos':'core.SectionPos',
         'ChunkPos':'world.level.ChunkPos', 'Storage':'util.SimpleBitStorage',
         'Tick':'world.ticks.ScheduledTick', 'TickQueue':'world.ticks.LevelChunkTicks', 'Priority':'world.ticks.TickPriority',
+        'Shared':'SharedConstants', 'Bootstrap':'server.Bootstrap', 'Block':'world.level.block.Block',
+        'IdMap':'core.IdMapper', 'StateHolder':'world.level.block.state.StateHolder',
+        'BlockState':'world.level.block.state.BlockState', 'Property':'world.level.block.state.properties.Property',
     }
     for alias, name in names.items():
         result[alias] = classes[prefix + name]['symbol']
@@ -41,6 +44,12 @@ def oracle_symbols(classes):
         'Tick': {'Tick.pos':'net.minecraft.core.BlockPos pos()', 'Tick.priority':'net.minecraft.world.ticks.TickPriority priority()',
             'Tick.time':'long triggerTick()', 'Tick.order':'long subTickOrder()', 'Tick.type':'java.lang.Object type()'},
         'Priority': {'Priority.byValue':'net.minecraft.world.ticks.TickPriority byValue(int)', 'Priority.value':'int getValue()'},
+        'Shared': {'Shared.detect':'void tryDetectVersion()'},
+        'Bootstrap': {'Bootstrap.boot':'void bootStrap()'},
+        'Block': {'Block.stateMap':'net.minecraft.core.IdMapper BLOCK_STATE_REGISTRY', 'Block.stateId':'int getId(net.minecraft.world.level.block.state.BlockState)'},
+        'IdMap': {'IdMap.byId':'java.lang.Object byId(int)'},
+        'StateHolder': {'State.properties':'java.util.Collection getProperties()', 'State.set':'java.lang.Object setValue(net.minecraft.world.level.block.state.properties.Property,java.lang.Comparable)'},
+        'Property': {'Property.name':'java.lang.String getName()', 'Property.parse':'java.util.Optional getValue(java.lang.String)'},
     }
     for alias, members in methods.items():
         for key, signature in members.items():
@@ -93,19 +102,23 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reference',type=pathlib.Path,default=REFERENCE)
     parser.add_argument('--runner',type=pathlib.Path,default=ROOT/'build/host/parity')
+    parser.add_argument('--runner-arg',action='append',default=[])
+    parser.add_argument('--cases',type=pathlib.Path)
+    parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
-        output=PRIVATE/'parity'; output.mkdir(parents=True,exist_ok=True)
+        output=private_path(args.output); output.mkdir(parents=True,exist_ok=True)
         configuration=oracle_symbols(classes)
         properties=output/'symbols.properties'
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
-        inputs=cases(); cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
+        inputs=args.cases.read_text().splitlines() if args.cases else cases()
+        cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
         subprocess.run([javac,'-d',str(output),str(ROOT/'tools/oracle/Oracle.java')],check=True)
         cp=os.pathsep.join([str(output)]+[str(path/name) for name in manifest['classpath']])
         original=subprocess.run([java,'-cp',cp,'mcps2.oracle.Oracle',str(properties),str(cases_file)],capture_output=True,text=True,check=True)
-        native=subprocess.run([str(args.runner.resolve())],input=cases_file.read_text(),capture_output=True,text=True,check=True)
+        native=subprocess.run([str(args.runner.resolve())]+args.runner_arg,input=cases_file.read_text(),capture_output=True,text=True,check=True)
         expected=[line for line in original.stdout.splitlines() if line.startswith('R\t')]
         actual=native.stdout.splitlines()
         (output/'original.txt').write_text('\n'.join(expected)+'\n')
@@ -126,6 +139,8 @@ def main():
                      'SimpleBitStorage raw layout','per-chunk scheduled tick identity and pending order'],
             'platform':'host C++ compared to original JVM; PS2 runtime parity not yet measured',
         }
+        if args.cases:
+            report['scope']=['block-state property transitions via original StateHolder.setValue']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2))
     except (OSError,ValueError,RuntimeError,KeyError,subprocess.CalledProcessError) as error:

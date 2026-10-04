@@ -31,9 +31,9 @@ Status: **host verificado** = comparação executada contra o JAR oficial;
 | `LevelTicks` | Coleta e ordem entre chunks | chunk ticking, INTRA_TICK_DRAIN_ORDER | Futuro tick coordinator | Planejado | Fila global não é substituída por ordenação simples |
 | `TickRateManager` | Ritmo, freeze, sprint, steps | runtime e comandos | `TickClock` + futuro manager | Relógio local implementado | Ainda sem freeze/sprint/step originais |
 | `Block` / `Blocks` | Identidade e comportamento | states, shapes, updates | Futuro block registry/runtime | Analisado por reports | Registry de estados não equivale a comportamentos |
-| `BlockState` / `StateDefinition` / `StateHolder` | Propriedades e transições | Property, Block | Futuro registry de estados compacto | Analisado: report de todos os estados | Não substituir stairs/doors por blocos genéricos |
+| `BlockState` / `StateDefinition` / `StateHolder` | Propriedades e transições | Property, Block | `BlockStates` / MCSR gerado privadamente | Host verificado: 26.684 estados e 33.721 transições | Consulta imutável; transição por busca equivalente; comportamento dos blocos pendente |
 | `Item` / `ItemStack` / components | Itens, contagem, dados | registries, components | Futuro item runtime | Analisado por reports | Sem inventário funcional |
-| `BuiltInRegistries` / `RegistryAccess` | IDs, nomes e acesso | dados estáticos/dinâmicos | Futuros índices compactos gerados | Analisado: registry dump | Registries dinâmicos precisam de datapack carregado |
+| `BuiltInRegistries` / `RegistryAccess` | IDs, nomes e acesso | dados estáticos/dinâmicos | MCSR para blocks/states e mapas privados para 78 registries | Dados exportados; blocks/states nativos | Registries dinâmicos/runtime dos demais ainda pendentes |
 | `RecipeManager` / `ShapedRecipe` / `ShapelessRecipe` | Matching e crafting | itens, tags, components | Futuro recipe runtime | Planejado | Não reduzir matching shapeless a contagem ingênua |
 | `AbstractFurnaceBlockEntity` | Combustível e processamento | recipes, inventário, ticks | Futuro block entity runtime | Planejado | Sem regras de fornalha integradas |
 | `Enchantment` / `EnchantmentHelper` | Efeitos e custos | components, RNG, itens | Futuro enchantment runtime | Planejado | Conteúdo data-driven e efeitos pendentes |
@@ -53,7 +53,7 @@ Status: **host verificado** = comparação executada contra o JAR oficial;
 | `DimensionType` / `LevelStem` | Overworld, Nether, End | registries dinâmicos, geração | Futuro dimension runtime | Planejado | As três dimensões continuam no escopo |
 | `LevelRenderer` / chunk mesh | Apresentação do mundo | states, models, texturas, GS | gsKit + futuro mesher/GS renderer | Plataforma compilada PS2 | Ainda sem passes de mundo, entidades, céu ou partículas |
 | GUI / HUD / screens | Menus e apresentação | fontes, items, jogador | Futuro GS GUI runtime | Diagnóstico de plataforma somente | Não reivindica HUD/menu originais |
-| resource manager / sound engine | Recursos e áudio | assets, SPU2 | Futuro private asset pipeline/SPU2 | Planejado | Assets de cliente requerem instalação legítima |
+| resource manager / sound engine | Recursos e áudio | assets, SPU2 | `import_minecraft_assets.py`, MCPK/MCPT; futuro SPU2 | Pipeline escrita; PNG verificado com fixture própria | Import completo requer cliente legítimo ainda não fornecido; renderer/audio pendentes |
 | chunk serialization / region files / NBT | Saves | world state, registries, filesystem | Ponte POSIX + futuro save codec | Plataforma compilada PS2 | Escrever diagnóstico não equivale a salvar mundo |
 | `Commands` / Brigadier / `GameRules` | Comandos e regras | runtime e registries | Futuro command runtime | Analisado: command syntax report | Comandos relevantes/regra de ticks pendentes |
 | conexão / protocolo | Networking | packets, sockets, IOP | Futuro PS2 network runtime | Planejado | Sem alegação de interoperabilidade Java |

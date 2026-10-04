@@ -48,6 +48,8 @@ fica em `.local/reference/`, ignorada pelo Git. Uma pasta existente não é sobr
 ```sh
 export JAVA_HOME=/caminho/para/jdk-21
 make parity
+make reference-data
+make registry-parity
 make check-public
 ```
 

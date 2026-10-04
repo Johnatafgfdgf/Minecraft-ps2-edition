@@ -1,0 +1,2 @@
+# Optional private PNG conversion and its tests; not needed by the C++ runtime.
+Pillow==12.3.0
