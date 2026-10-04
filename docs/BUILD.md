@@ -9,6 +9,9 @@ em Ubuntu com glibc 2.39. Host tests exigem make, g++ com C++17 e Python 3.10+.
 Os testes que executam a referência exigem **JDK 21** com `java` e `javac`.
 
 ```sh
+python3 -m venv .local/venv
+. .local/venv/bin/activate
+python3 -m pip install -r requirements-tools.txt
 python3 tools/bootstrap_ps2dev.py
 export PS2DEV="$PWD/.local/ps2dev"
 export PS2SDK="$PS2DEV/ps2sdk"
@@ -85,3 +88,17 @@ Validação a executar no equipamento: boot em NTSC/PAL, fonte FONTM, plug/unplu
 do controle, timer, caminho de arquivo do carregador, custo do DMA e kernel
 determinístico. Não há alegação de 30 FPS ou paridade em hardware antes dessas
 medições.
+
+## Build automático
+
+O workflow [Native PS2 build and 1.21.1 parity](../.github/workflows/native.yml)
+executa host tests, auditoria da árvore pública, build EE e as suítes contra o
+servidor público oficial. Os jobs de build EE e paridade começam após host tests
+aprovados. Os Actions são fixados por SHA e o ps2dev por versão/checksum.
+
+Na [página Actions](https://github.com/Johnatafgfdgf/Minecraft-ps2-edition/actions),
+abra uma execução aprovada e baixe o artifact **MinecraftPS2-elf**: ELF, linker
+map, instruções e avisos de dependências. O artifact **parity-summary** contém
+somente três reports próprios com contagens, checksums e escopo. JARs, mappings,
+reports originais, dados Minecraft e assets não são publicados como artifacts.
+Os artifacts têm retenção de 90 dias e podem ser regenerados pelo workflow.

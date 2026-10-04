@@ -50,6 +50,8 @@ make noise-parity
 - [Comportamentos analisados e limites dos testes](docs/PARITY.md)
 - [Próximas etapas do port](docs/ROADMAP.md)
 - [Pipeline privada de conteúdo e formatos](docs/CONTENT_PIPELINE.md)
+- [Builds e ELF no GitHub Actions](https://github.com/Johnatafgfdgf/Minecraft-ps2-edition/actions)
+- [Dependências e avisos de terceiros](docs/THIRD_PARTY.md)
 
 O projeto não é afiliado à Mojang ou à Microsoft. Seus arquivos originais não
 integram o repositório.

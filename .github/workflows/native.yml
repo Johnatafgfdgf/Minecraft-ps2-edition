@@ -1,0 +1,95 @@
+name: Native PS2 build and 1.21.1 parity
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install private-pipeline test dependency
+        run: |
+          python3 -m venv .local/venv
+          .local/venv/bin/python -m pip install -r requirements-tools.txt
+          echo "$GITHUB_WORKSPACE/.local/venv/bin" >> "$GITHUB_PATH"
+      - name: Host tests and public-tree audit
+        run: |
+          make test
+          make check-public
+
+  ps2:
+    needs: host
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install checksum-pinned ps2dev v2.0.0
+        run: |
+          python3 tools/bootstrap_ps2dev.py
+          echo "PS2DEV=$GITHUB_WORKSPACE/.local/ps2dev" >> "$GITHUB_ENV"
+          echo "PS2SDK=$GITHUB_WORKSPACE/.local/ps2dev/ps2sdk" >> "$GITHUB_ENV"
+          echo "GSKIT=$GITHUB_WORKSPACE/.local/ps2dev/gsKit" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/.local/ps2dev/ee/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/.local/ps2dev/iop/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/.local/ps2dev/dvp/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/.local/ps2dev/ps2sdk/bin" >> "$GITHUB_PATH"
+      - name: Build native ELF and package notices
+        run: |
+          make ps2
+          mips64r5900el-ps2-elf-size build/ps2/MinecraftPS2.elf
+          mkdir -p dist
+          cp build/ps2/MinecraftPS2.elf build/ps2/MinecraftPS2.map dist/
+          cp docs/BUILD.md docs/PARITY.md docs/THIRD_PARTY.md dist/
+          cp docs/licenses/AFL-2.0.txt dist/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: MinecraftPS2-elf
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+
+  parity:
+    needs: host
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Import the public official server privately
+        run: python3 tools/import_minecraft_reference.py --download-official-server
+      - name: Compare native behavior with the original JAR
+        run: |
+          make parity
+          make reference-data
+          make registry-parity
+          make noise-parity
+          make check-public
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: parity-summary
+          # Only authored summaries; no JARs, mappings, Minecraft JSON or assets.
+          path: |
+            .local/parity/report.json
+            .local/registry-parity/report.json
+            .local/noise-parity/report.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 90
