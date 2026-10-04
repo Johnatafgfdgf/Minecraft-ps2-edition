@@ -49,7 +49,8 @@ Status: **host verificado** = comparação executada contra o JAR oficial;
 | `LootTable` / loot functions / predicates | Drops e recompensas | RNG, contexts, registries | Futuro loot runtime | Planejado | JSON importado não será marcado como lógica implementada |
 | `NoiseBasedChunkGenerator` / `RandomState` | Geração procedural | noises, biome source, density | Futuro worldgen runtime | Planejado | PRNG verificado não garante os mesmos chunks |
 | `ImprovedNoise` | Ruído 3D e quantização vertical | RandomSource, gradientes, Mth | `include/mcps2/improved_noise.hpp` | Host verificado: 32.896 observações binary64 | Amostragem de valor implementada; derivadas e suíte completa no EE pendentes |
-| `PerlinNoise`, `NormalNoise`, density functions | Octaves e campos de densidade | doubles, PRNG, codecs | Futuro numeric/worldgen kernel | Planejado | Exige validação de binary64/StrictMath no EE |
+| `PerlinNoise` / `NormalNoise` | Octaves e campos de ruído | ImprovedNoise, positional factories, doubles | `octave_noise.hpp` | Host verificado: 172.139 observações; 60 parâmetros vanilla | Buffers externos; derivados/codec/runtime e suíte completa no EE pendentes |
+| `BlendedNoise` / density functions | Mistura de densidades e grafo do terreno | noise, contexts, codecs | Futuro numeric/worldgen kernel | Planejado | Exige validação de binary64/StrictMath no EE |
 | biome source / carvers / surface rules | Biomas, cavernas, superfície | noise, registries | Futuro worldgen stages | Planejado | Sem gerador alternativo inventado |
 | features / structures / placement | Árvores, estruturas, decorators | seeds, worldgen, dados | Futuro worldgen stages | Planejado | Dados estruturais originais permanecem privados |
 | `DimensionType` / `LevelStem` | Overworld, Nether, End | registries dinâmicos, geração | Futuro dimension runtime | Planejado | As três dimensões continuam no escopo |

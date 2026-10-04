@@ -4,6 +4,7 @@
 #include "mcps2/tick_queue.hpp"
 #include "mcps2/tick_clock.hpp"
 #include "mcps2/boot_checks.hpp"
+#include "mcps2/octave_noise.hpp"
 #include <cassert>
 #include <cstdio>
 #include <vector>
@@ -16,6 +17,16 @@ int main() {
     assert(empty.low==0xd41d8cd98f00b204ULL && empty.high==0xe9800998ecf8427eULL);
     const auto abc=seed_from_utf8("abc");
     assert(abc.low==0x900150983cd24fb0ULL && abc.high==0xd6963f7d28e17f72ULL);
+    NoiseOctave octave_memory[3];
+    const double sparse[3]={1,0,0.25};
+    PerlinNoise field; LegacyRandom first_source(42),untouched(42);
+    assert(!field.initialize(first_source,-4,sparse,3,octave_memory,2));
+    assert(first_source.next_long()==untouched.next_long());
+    assert(field.initialize(first_source,-4,sparse,3,octave_memory,3));
+    assert(field.ready() && field.octave(0) && !field.octave(1) && field.octave(2) && !field.octave(3));
+    NormalNoise combined;
+    assert(!combined.initialize(first_source,-4,sparse,3,octave_memory,octave_memory,3));
+    assert(!combined.ready());
     TickClock clock;
     clock.advance(49999); assert(!clock.consume());
     clock.advance(1); assert(clock.consume() && clock.tick() == 1);

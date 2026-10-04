@@ -3,6 +3,7 @@
 #include "mcps2/bit_storage.hpp"
 #include "mcps2/tick_queue.hpp"
 #include "mcps2/improved_noise.hpp"
+#include "mcps2/octave_noise.hpp"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -63,6 +64,39 @@ template<class R> void worldgen(uint64_t seed, int32_t x, int32_t z, int32_t ind
     emit("salt " + hex(value) + " " + std::to_string(random.count()));
 }
 uint64_t double_bits(double value) { uint64_t bits; std::memcpy(&bits,&value,sizeof(bits)); return bits; }
+double from_double_bits(const std::string& token) { const uint64_t bits=parse_hex(token); double value; std::memcpy(&value,&bits,sizeof(value)); return value; }
+template<class R> void octaves(uint64_t seed,const std::string& mode,int32_t first,const std::vector<double>& amplitudes,unsigned samples) {
+    const size_t count=amplitudes.size();
+    std::vector<mcps2::NoiseOctave> first_storage(count),second_storage(count);
+    R source(seed); mcps2::PerlinNoise perlin; mcps2::NormalNoise normal;
+    const bool is_normal=mode=="normal"||mode=="normal-legacy",modern=mode=="normal"||mode=="modern";
+    const bool accepted=is_normal ? normal.initialize(source,first,amplitudes.data(),count,first_storage.data(),second_storage.data(),count,modern)
+        : perlin.initialize(source,first,amplitudes.data(),count,first_storage.data(),count,modern);
+    emit(std::string("octaves-accepted ")+(accepted?'1':'0'));
+    emit("octaves-parent "+hex(source.next_long()));
+    if constexpr (!std::is_same_v<R,mcps2::LegacyRandom> && !std::is_same_v<R,mcps2::XoroshiroRandom>)
+        emit("octaves-count "+std::to_string(source.count()));
+    if (!accepted) return;
+    emit("octaves-max "+hex(double_bits(is_normal?normal.max_value():perlin.max_value())));
+    if (!is_normal) {
+        emit("octaves-broken "+hex(double_bits(perlin.max_broken_value(0.375))));
+        for (size_t i=0;i<count;++i) {
+            const auto* field=perlin.octave(i);
+            if (!field) { emit("octave "+std::to_string(i)+" null"); continue; }
+            std::string line="octave "+std::to_string(i);
+            for (unsigned axis=0;axis<3;++axis) line+=" "+hex(double_bits(field->offset(axis)));
+            emit(line);
+        }
+    }
+    const double edges[]={-33554432,-16777216,-1,-0.5,0,0.5,16777216,33554432};
+    for (unsigned i=0;i<samples;++i) {
+        const double x=i<8?edges[i]:mcps2::signed32(i*0x9e3779b9u+0x11221122u)/64.0;
+        const double y=(mcps2::signed32(i*1664525u+54321u)%2048)/8.0-64.0;
+        const double z=i<8?-x:mcps2::signed32(i*0x7f4a7c15u+0x13579bdfu)/64.0;
+        emit("octaves3 "+std::to_string(i)+" "+hex(double_bits(is_normal?normal.sample(x,y,z):perlin.sample(x,y,z))));
+        if (!is_normal) emit("octaves6 "+std::to_string(i)+" "+hex(double_bits(perlin.sample(x,y,z,(i%7)/16.0,i%3?(i%5)/8.0:-1.0,i%2!=0))));
+    }
+}
 template<class R> void factory_draw(const std::string& label, R& child) {
     const uint32_t a=uint32_t(child.next_int());
     const uint64_t b=child.next_long(), c=double_bits(child.next_double());
@@ -124,6 +158,18 @@ int main() {
             else if (variant == "worldgen-legacy") rng<WorldgenRandom<LegacyRandom>>(value, count);
             else if (variant == "worldgen-xoroshiro") rng<WorldgenRandom<XoroshiroRandom>>(value, count);
             else return 2;
+        } else if (command=="octaves") {
+            std::string variant,seed,mode; int32_t first; size_t count; unsigned samples;
+            std::cin>>variant>>seed>>mode>>first>>count>>samples;
+            std::vector<double> amplitudes(count);
+            for (auto& a:amplitudes) { std::string token;std::cin>>token;a=from_double_bits(token); }
+            if (variant=="legacy") octaves<LegacyRandom>(parse_hex(seed),mode,first,amplitudes,samples);
+            else if (variant=="xoroshiro") octaves<XoroshiroRandom>(parse_hex(seed),mode,first,amplitudes,samples);
+            else if (variant=="worldgen-legacy") octaves<WorldgenRandom<LegacyRandom>>(parse_hex(seed),mode,first,amplitudes,samples);
+            else if (variant=="worldgen-xoroshiro") octaves<WorldgenRandom<XoroshiroRandom>>(parse_hex(seed),mode,first,amplitudes,samples);
+            else return 2;
+        } else if (command=="wrap") {
+            std::string token;std::cin>>token;emit("wrap "+hex(double_bits(PerlinNoise::wrap(from_double_bits(token)))));
         } else if (command=="factory" || command=="factory-hash") {
             std::string variant,seed,token; std::cin>>variant>>seed>>token;
             if (variant=="legacy") factory<LegacyRandom>(parse_hex(seed),token,command=="factory-hash");

@@ -29,6 +29,65 @@ public final class Oracle {
     static final Class<?>[] XYZ = {int.class, int.class, int.class};
     static boolean statesInitialized = false;
 
+    static void ensureBootstrap() throws Exception {
+        if (!statesInitialized) {
+            staticCall("Shared.detect", "Shared", NONE);
+            staticCall("Bootstrap.boot", "Bootstrap", NONE);
+            statesInitialized=true;
+        }
+    }
+    static double declaredDouble(String key,String owner,Object target) throws Exception {
+        Method member=type(owner).getDeclaredMethod(symbols.getProperty(key));
+        member.setAccessible(true); return (double)member.invoke(target);
+    }
+    static void octaves(String[] f) throws Exception {
+        ensureBootstrap();
+        boolean normal=f[3].startsWith("normal"), modern=f[3].equals("modern") || f[3].equals("normal");
+        int first=Integer.parseInt(f[4]),count=Integer.parseInt(f[5]),samples=Integer.parseInt(f[6]);
+        double[] amplitudes=new double[count];
+        for (int i=0;i<count;++i) amplitudes[i]=Double.longBitsToDouble(hex(f[7+i]));
+        Object list=Class.forName("it.unimi.dsi.fastutil.doubles.DoubleArrayList").getConstructor(double[].class).newInstance((Object)amplitudes);
+        Class<?> doubleList=Class.forName("it.unimi.dsi.fastutil.doubles.DoubleList");
+        Object source=random(f[1],hex(f[2])),field=null;
+        try {
+            if (normal) {
+                Object parameters=type("NoiseParameters").getConstructor(int.class,doubleList).newInstance(first,list);
+                field=staticCall(modern?"Normal.modern":"Normal.legacy","Normal",new Class<?>[]{type("RandomSource"),type("NoiseParameters")},source,parameters);
+            } else field=staticCall(modern?"Perlin.modern":"Perlin.legacy","Perlin",new Class<?>[]{type("RandomSource"),int.class,doubleList},source,first,list);
+        } catch (InvocationTargetException failure) {
+            if (!(failure.getCause() instanceof IllegalArgumentException) && !(failure.getCause() instanceof IllegalStateException)) throw failure;
+        }
+        emit("octaves-accepted " + (field!=null?1:0));
+        emit("octaves-parent " + h64(nextLong(source)));
+        if (f[1].startsWith("worldgen-")) emit("octaves-count " + call("Worldgen.count",source,NONE));
+        if (field==null) return;
+        emit("octaves-max " + h64(Double.doubleToRawLongBits(declaredDouble(normal?"Normal.max":"Perlin.max",normal?"Normal":"Perlin",field))));
+        if (!normal) {
+            double bound=(double)call("Perlin.broken",field,new Class<?>[]{double.class},0.375);
+            emit("octaves-broken " + h64(Double.doubleToRawLongBits(bound)));
+            for (int i=0;i<count;++i) {
+                Object level=call("Perlin.octave",field,INT,i);
+                if (level==null) { emit("octave " + i + " null"); continue; }
+                String line="octave " + i;
+                for (String key:new String[]{"Noise.xo","Noise.yo","Noise.zo"})
+                    line += " " + h64(Double.doubleToRawLongBits(type("Noise").getField(symbols.getProperty(key)).getDouble(level)));
+                emit(line);
+            }
+        }
+        double[] edges={-33554432,-16777216,-1,-0.5,0,0.5,16777216,33554432};
+        for (int i=0;i<samples;++i) {
+            double x=i<8?edges[i]:(int)(i*0x9e3779b9+0x11221122)/64.0;
+            double y=((int)(i*1664525+54321)%2048)/8.0-64.0;
+            double z=i<8?-x:(int)(i*0x7f4a7c15+0x13579bdf)/64.0;
+            double value=(double)call(normal?"Normal.value":"Perlin.value",field,new Class<?>[]{double.class,double.class,double.class},x,y,z);
+            emit("octaves3 " + i + " " + h64(Double.doubleToRawLongBits(value)));
+            if (!normal) {
+                value=(double)call("Perlin.step",field,new Class<?>[]{double.class,double.class,double.class,double.class,double.class,boolean.class},x,y,z,(i%7)/16.0,i%3!=0?(i%5)/8.0:-1.0,i%2!=0);
+                emit("octaves6 " + i + " " + h64(Double.doubleToRawLongBits(value)));
+            }
+        }
+    }
+
     static String javaString(String token) {
         if (token.equals("-")) return "";
         char[] units=new char[token.length()/4];
@@ -90,11 +149,7 @@ public final class Oracle {
     }
 
     static void state(String[] fields) throws Exception {
-        if (!statesInitialized) {
-            staticCall("Shared.detect", "Shared", NONE);
-            staticCall("Bootstrap.boot", "Bootstrap", NONE);
-            statesInitialized = true;
-        }
+        ensureBootstrap();
         Object map=type("Block").getField(symbols.getProperty("Block.stateMap")).get(null);
         Object state=call("IdMap.byId",map,INT,Integer.parseInt(fields[1]));
         if (state==null) { emit("state -1"); return; }
@@ -223,6 +278,8 @@ public final class Oracle {
                     case "state": state(f); break;
                     case "noise": noise(f); break;
                     case "factory": case "factory-hash": factory(f); break;
+                    case "octaves": octaves(f); break;
+                    case "wrap": emit("wrap " + h64(Double.doubleToRawLongBits((double)staticCall("Perlin.wrap","Perlin",new Class<?>[]{double.class},Double.longBitsToDouble(hex(f[1])))))); break;
                     case "mix": emit("mix " + h64((long)staticCall("Support.mix","Support",LONG,hex(f[1])))); break;
                     case "zero": {
                         Object source=type("Xoro").getConstructor(long.class,long.class).newInstance(0L,0L);

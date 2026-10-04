@@ -1,6 +1,7 @@
 #include "mcps2/boot_checks.hpp"
 #include "mcps2/random.hpp"
 #include "mcps2/improved_noise.hpp"
+#include "mcps2/octave_noise.hpp"
 #include <cstring>
 
 namespace mcps2 {
@@ -37,6 +38,26 @@ uint32_t run_boot_checks() {
         && after == 0xa15aa3684d0173abULL
         && bits(noise.sample(x, y, z)) == 0x3fa714623e0891ccULL
         && bits(noise.sample(x, y, z, 0.0625, 0.375)) == 0x3fb5e7ba609a9f82ULL) mask |= 16;
+    const Seed128 hash = seed_from_java_string(u"minecraft:temperature");
+    XoroshiroRandom parent(0);
+    auto factory = parent.fork_positional();
+    auto child = factory.from_hash(u"minecraft:temperature");
+    const uint32_t integer = uint32_t(child.next_int());
+    const uint64_t wide = child.next_long(), real = bits(child.next_double());
+    int32_t bounded = 0;
+    if (hash.low == 0x5c7e6b29735f0d7fULL && hash.high == 0xf7d86f1bbc734988ULL
+        && integer == 0x5327bf6fu && wide == 0x7c1aade8e17af0c2ULL && real == 0x3fc382990206f5e0ULL
+        && child.next_int(1073741825, bounded) && bounded == 375613209) mask |= 32;
+    NoiseOctave first_storage[7], second_storage[7];
+    const double amplitudes[7] = {1,1,1,1,1,1,1};
+    LegacyRandom perlin_source(0); PerlinNoise perlin;
+    if (perlin.initialize(perlin_source, -6, amplitudes, 7, first_storage, 7)
+        && perlin_source.next_long() == 0x3d93cb799b3970beULL && bits(perlin.max_value()) == 0x4000000000000000ULL
+        && bits(perlin.sample(-33554432.0,70.125,33554432.0)) == 0xbf9e9c02ea74c19eULL) mask |= 64;
+    XoroshiroRandom normal_source(0); NormalNoise normal;
+    if (normal.initialize(normal_source, -6, amplitudes, 7, first_storage, second_storage, 7)
+        && normal_source.next_long() == 0x1986c1cae1d8f2c5ULL && bits(normal.max_value()) == 0x4017555555555555ULL
+        && bits(normal.sample(-33554432.0,70.125,33554432.0)) == 0x3fe47725c748740bULL) mask |= 128;
     return mask;
 }
 }

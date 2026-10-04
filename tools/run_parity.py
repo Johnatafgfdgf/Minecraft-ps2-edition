@@ -8,6 +8,8 @@ import pathlib
 import random
 import shutil
 import subprocess
+import struct
+import zipfile
 from minecraft_reference import ROOT, REFERENCE, PRIVATE, load_reference, private_path
 
 
@@ -26,6 +28,8 @@ def oracle_symbols(classes):
         'Noise':'world.level.levelgen.synth.ImprovedNoise',
         'Factory':'world.level.levelgen.PositionalRandomFactory', 'Seed128':'world.level.levelgen.RandomSupport$Seed128bit',
         'Mth':'util.Mth',
+        'Perlin':'world.level.levelgen.synth.PerlinNoise','Normal':'world.level.levelgen.synth.NormalNoise',
+        'NoiseParameters':'world.level.levelgen.synth.NormalNoise$NoiseParameters',
     }
     for alias, name in names.items():
         result[alias] = classes[prefix + name]['symbol']
@@ -42,6 +46,14 @@ def oracle_symbols(classes):
             'Factory.hash':'net.minecraft.util.RandomSource fromHashOf(java.lang.String)', 'Factory.seed':'net.minecraft.util.RandomSource fromSeed(long)'},
         'Seed128': {'Seed128.low':'long seedLo()', 'Seed128.high':'long seedHi()'},
         'Mth': {'Mth.seed':'long getSeed(int,int,int)'},
+        'Perlin': {'Perlin.modern':'net.minecraft.world.level.levelgen.synth.PerlinNoise create(net.minecraft.util.RandomSource,int,it.unimi.dsi.fastutil.doubles.DoubleList)',
+            'Perlin.legacy':'net.minecraft.world.level.levelgen.synth.PerlinNoise createLegacyForLegacyNetherBiome(net.minecraft.util.RandomSource,int,it.unimi.dsi.fastutil.doubles.DoubleList)',
+            'Perlin.value':'double getValue(double,double,double)', 'Perlin.step':'double getValue(double,double,double,double,double,boolean)',
+            'Perlin.max':'double maxValue()', 'Perlin.broken':'double maxBrokenValue(double)',
+            'Perlin.octave':'net.minecraft.world.level.levelgen.synth.ImprovedNoise getOctaveNoise(int)', 'Perlin.wrap':'double wrap(double)'},
+        'Normal': {'Normal.modern':'net.minecraft.world.level.levelgen.synth.NormalNoise create(net.minecraft.util.RandomSource,net.minecraft.world.level.levelgen.synth.NormalNoise$NoiseParameters)',
+            'Normal.legacy':'net.minecraft.world.level.levelgen.synth.NormalNoise createLegacyNetherBiome(net.minecraft.util.RandomSource,net.minecraft.world.level.levelgen.synth.NormalNoise$NoiseParameters)',
+            'Normal.value':'double getValue(double,double,double)', 'Normal.max':'double maxValue()'},
         'BlockPos': {'Block.pack':'long asLong(int,int,int)', 'Block.instancePack':'long asLong()', 'Block.x':'int getX(long)', 'Block.y':'int getY(long)', 'Block.z':'int getZ(long)'},
         'SectionPos': {'Section.pack':'long asLong(int,int,int)', 'Section.x':'int x(long)', 'Section.y':'int y(long)',
             'Section.z':'int z(long)', 'Section.relative':'short sectionRelativePos(net.minecraft.core.BlockPos)', 'Section.floor':'int blockToSectionCoord(int)'},
@@ -134,6 +146,34 @@ def factory_cases():
     return result
 
 
+def octave_cases(reference,manifest):
+    bits=lambda value:struct.pack('>d',float(value)).hex()
+    modes=('modern','legacy','normal','normal-legacy')
+    result=[]
+    def add(variant,seed,mode,first,amplitudes,samples):
+        suffix=' '.join(bits(a) for a in amplitudes)
+        result.append(f'octaves {variant} {seed:016x} {mode} {first} {len(amplitudes)} {samples}' + (f' {suffix}' if suffix else ''))
+    synthetic=[(-6,[1,1,1,1,1,1,1]),(-4,[1,0,0.25,0,1]),(-4,[0,0,0,0,0]),
+               (-7,[1,0]),(0,[1]),(2,[1,0.5]),(-1,[1,0.5,1]),(-5,[1,0,0.1]),
+               (-3,[0,0,1,0]),(-1,[]),(-8,[1,-0.25,0,1]),(-10,[1]*22)]
+    for variant in ('legacy','xoroshiro','worldgen-legacy','worldgen-xoroshiro'):
+        for seed in (0,0xffffffffffffffff,0x123456789abcdef0):
+            for first,amplitudes in synthetic:
+                for mode in modes: add(variant,seed,mode,first,amplitudes,96)
+    # Original parameters stay in private cases, never copied into the public source tree.
+    with zipfile.ZipFile(reference/manifest['inner_jar']) as jar:
+        for name in sorted(jar.namelist()):
+            if not name.startswith('data/minecraft/worldgen/noise/') or not name.endswith('.json'): continue
+            parameters=json.loads(jar.read(name))
+            for variant in ('legacy','xoroshiro'):
+                for seed in (0,0x123456789abcdef0):
+                    for mode in modes: add(variant,seed,mode,parameters['firstOctave'],parameters['amplitudes'],64)
+    for x in (-1e30,-1e22,-33554432.5,-33554432.0,-16777216.5,-16777216.0,-0.0,
+              0.0,0.25,16777215.5,16777216.0,33554431.5,33554432.0,1e22,1e30):
+        result.append(f'wrap {bits(x)}')
+    return result
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reference',type=pathlib.Path,default=REFERENCE)
@@ -141,7 +181,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
-    parser.add_argument('--suite',choices=['core','noise','factories'],default='core')
+    parser.add_argument('--suite',choices=['core','noise','factories','octaves'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -149,7 +189,7 @@ def main():
         configuration=oracle_symbols(classes)
         properties=output/'symbols.properties'
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
-        generators={'core':cases,'noise':noise_cases,'factories':factory_cases}
+        generators={'core':cases,'noise':noise_cases,'factories':factory_cases,'octaves':lambda:octave_cases(path,manifest)}
         inputs=args.cases.read_text().splitlines() if args.cases else generators[args.suite]()
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
@@ -183,6 +223,9 @@ def main():
             report['scope']=['ImprovedNoise construction/random consumption and noise3/noise5 binary64 results']
         elif args.suite=='factories':
             report['scope']=['positional factories, fromSeed, Java UTF-16 hash, UTF-8 MD5 seeds, fork consumption and wrapper count']
+        elif args.suite=='octaves':
+            report['scope']=['PerlinNoise/NormalNoise modern and Legacy construction, sparse octaves, max values, binary64 sampling and wrapping',
+                             'all 60 original vanilla noise parameter definitions, kept in private fixtures']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2))
     except (OSError,ValueError,RuntimeError,KeyError,subprocess.CalledProcessError) as error:

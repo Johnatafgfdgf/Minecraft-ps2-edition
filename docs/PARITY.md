@@ -46,7 +46,7 @@ executar os métodos originais, com todas as bibliotecas do bundle verificadas.
 ## Testes executados — 2026-10-04
 
 `make test`: verificações nativas de limites, dívidas do relógio, overflow,
-armazenamento, capacidade, deduplicação, ordem e cinco probes de boot; nove testes Python da pipeline
+armazenamento, capacidade, deduplicação, ordem e oito probes de boot; nove testes Python da pipeline
 e proteção dos inputs. `make parity`: **1.313 cenários / 75.908 resultados iguais**
 ao JAR original, incluindo sequences intercaladas, seeds negativas/extremas,
 reseed, forks, limites com rejeição, coordenadas negativas/extremas, layout bruto
@@ -75,15 +75,22 @@ amostragem de cinco argumentos com quantização Y. Compara os bits de double,
 sem tolerância aproximada, para 16 seeds em quatro variantes de PRNG, 256 posições
 por caso, limites de células e coordenadas negativas de grande magnitude.
 SHA-256: `124c3c111edcb8b1cc09caac4d30d16fae7f1ea8cd1a6c0bfc1211080cc371dc`.
-As três suítes somam **142.525 resultados originais coincidentes**; a conferência
-do report de estados é uma validação adicional distinta.
+A conferência do report de estados é uma validação adicional distinta.
 
 `make factory-parity`: **3.072 cenários / 35.200 resultados iguais**, incluindo
 `at`, `fromSeed`, `fromHashOf`, consumo do parent e contador do Worldgen wrapper.
 Cobre posições com overflow, MD5 e hash Java, strings ASCII, caracteres Unicode,
 pares/units isoladas de surrogates, NUL e limites de padding de blocos MD5.
 SHA-256: `32e7ea3ca6166f80b7c55ee46eb9f8be5ddc249969cf9a9d6acd7eb251793013`.
-O total das quatro suítes é **177.725 resultados coincidentes**.
+
+`make octave-parity`: **1.551 cenários / 172.139 observações iguais** no JAR.
+Verifica construção, aceitação/rejeição, próximo valor do parent, contador dos
+wrappers, offsets de octaves, bounds, wrapping e sampling 3/6 argumentos de
+Perlin, além de sampling de NormalNoise. Inclui octaves esparsas, amplitudes zero,
+negativas, lista vazia, positivos rejeitados pelo modo Legacy e todos os **60
+parâmetros vanilla** importados privadamente. Comparação binary64 sem tolerância.
+SHA-256: `df1988c3a02bc79aa89822c0f7a601f7c1f71e61731e65657c60d942505fb439`.
+Total das cinco suítes: **349.864 resultados coincidentes**.
 
 Testes Python adicionais verificam arquivos truncados, IDs/offsets inválidos,
 CRC/offsets de packs e conversão de um PNG próprio com todas as linhas preservadas.
@@ -92,10 +99,10 @@ contra um cliente legítimo nesta sessão.
 
 Build EE concluído com ps2dev v2.0.0 / GCC 15.2.0. ELF 32-bit little-endian MIPS,
 linkado com o startup/linkfile do PS2SDK. Essa evidência é **compilação**, não
-execução ou medição de FPS. Text/data/bss do ELF com o núcleo, probe e
-reutilização de módulos do IOP: 186.596 / 6.440 / 27.624 bytes. Não é orçamento
-de memória de um jogo completo. O código de núcleo ainda deve ser medido no EE.
-O ELF executa cinco probes de referência; o resultado esperado é máscara `0x1f`.
+execução ou medição de FPS. Tamanhos text/data/bss e linker map estão nos artifacts
+e logs do build, sem representar o orçamento de um jogo completo. O código de
+núcleo ainda deve ser medido no EE. O ELF executa oito probes de referência;
+o resultado esperado é máscara `0xff`.
 Sua aprovação verifica apenas esses vetores pequenos, não toda a suíte de host.
 
 ## O que os testes ainda não provam

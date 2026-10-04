@@ -1,13 +1,15 @@
 #pragma once
 #include <cstdint>
 #include <cassert>
+#include <type_traits>
 
 namespace mcps2 {
 // A value-sampling ImprovedNoise kernel, constructed from the equivalent random stream.
 // Derivative sampling and higher-level octave/density composition remain separate tasks.
 class ImprovedNoise {
 public:
-    template<class Random> explicit ImprovedNoise(Random& random) {
+    template<class Random, std::enable_if_t<!std::is_same_v<std::decay_t<Random>, ImprovedNoise>, int> = 0>
+    explicit ImprovedNoise(Random& random) {
         for (double& offset : offsets_) offset = random.next_double() * 256.0;
         for (unsigned i = 0; i < 256; ++i) permutation_[i] = uint8_t(i);
         for (unsigned i = 0; i < 256; ++i) {
