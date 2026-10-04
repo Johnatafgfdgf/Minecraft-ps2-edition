@@ -54,13 +54,14 @@ make parity
 make reference-data
 make registry-parity
 make noise-parity
+make factory-parity
 make check-public
 ```
 
 O harness Java tem um pacote próprio, pois as classes obfuscadas do JAR são
 assinadas. Ele descobre símbolos pelos mappings locais e chama as classes
 originais. Entradas, resultados e checksums ficam em `.local/parity/`,
-`.local/registry-parity/` e `.local/noise-parity/`. Uma falha
+`.local/registry-parity/`, `.local/noise-parity/` e `.local/factory-parity/`. Uma falha
 na referência não vira aprovação silenciosa; o comando falha.
 
 ## Console / emulador
@@ -99,6 +100,6 @@ aprovados. Os Actions são fixados por SHA e o ps2dev por versão/checksum.
 Na [página Actions](https://github.com/Johnatafgfdgf/Minecraft-ps2-edition/actions),
 abra uma execução aprovada e baixe o artifact **MinecraftPS2-elf**: ELF, linker
 map, instruções e avisos de dependências. O artifact **parity-summary** contém
-somente três reports próprios com contagens, checksums e escopo. JARs, mappings,
+somente reports próprios com contagens, checksums e escopo. JARs, mappings,
 reports originais, dados Minecraft e assets não são publicados como artifacts.
 Os artifacts têm retenção de 90 dias e podem ser regenerados pelo workflow.

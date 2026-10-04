@@ -11,7 +11,8 @@ Os mappings localizaram os componentes. `javap -p -c` foi usado localmente para
 verificar chamadas, constantes e tipos de operações de `LegacyRandomSource`,
 `BitRandomSource`, `Xoroshiro128PlusPlus`, `XoroshiroRandomSource`, `RandomSupport`,
 `WorldgenRandom`, `BlockPos`, `SectionPos`, `SimpleBitStorage`, `ScheduledTick`,
-`ImprovedNoise`, a base de gradientes de `SimplexNoise` e a interpolação de `Mth`.
+`ImprovedNoise`, factories posicionais, `RandomSupport.seedFromHashOf`, a base de
+gradientes de `SimplexNoise`, seed de coordenadas e a interpolação de `Mth`.
 Esse bytecode/material de análise não é publicado. O oracle usa reflection para
 executar os métodos originais, com todas as bibliotecas do bundle verificadas.
 
@@ -77,6 +78,13 @@ SHA-256: `124c3c111edcb8b1cc09caac4d30d16fae7f1ea8cd1a6c0bfc1211080cc371dc`.
 As três suítes somam **142.525 resultados originais coincidentes**; a conferência
 do report de estados é uma validação adicional distinta.
 
+`make factory-parity`: **3.072 cenários / 35.200 resultados iguais**, incluindo
+`at`, `fromSeed`, `fromHashOf`, consumo do parent e contador do Worldgen wrapper.
+Cobre posições com overflow, MD5 e hash Java, strings ASCII, caracteres Unicode,
+pares/units isoladas de surrogates, NUL e limites de padding de blocos MD5.
+SHA-256: `32e7ea3ca6166f80b7c55ee46eb9f8be5ddc249969cf9a9d6acd7eb251793013`.
+O total das quatro suítes é **177.725 resultados coincidentes**.
+
 Testes Python adicionais verificam arquivos truncados, IDs/offsets inválidos,
 CRC/offsets de packs e conversão de um PNG próprio com todas as linhas preservadas.
 O cliente não foi fornecido: o importador de assets não teve teste end-to-end
@@ -93,7 +101,7 @@ Sua aprovação verifica apenas esses vetores pequenos, não toda a suíte de ho
 ## O que os testes ainda não provam
 
 Não provam igualdade de chunks, biomas, geração de estruturas, gaussianas,
-factories posicionais/hash de strings, física, drops, recipes, IA, redstone,
+física, drops, recipes, IA, redstone,
 fluidos ou iluminação. Não provam ordering entre chunks nem serialização de
 ticks carregados. O tratamento de buffer cheio retorna erro/backpressure;
 o futuro world runtime deve garantir retenção do trabalho e nunca descartar o tick.

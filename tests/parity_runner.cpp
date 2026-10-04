@@ -63,6 +63,33 @@ template<class R> void worldgen(uint64_t seed, int32_t x, int32_t z, int32_t ind
     emit("salt " + hex(value) + " " + std::to_string(random.count()));
 }
 uint64_t double_bits(double value) { uint64_t bits; std::memcpy(&bits,&value,sizeof(bits)); return bits; }
+template<class R> void factory_draw(const std::string& label, R& child) {
+    const uint32_t a=uint32_t(child.next_int());
+    const uint64_t b=child.next_long(), c=double_bits(child.next_double());
+    int32_t d=0; if (!child.next_int(1073741825,d)) std::abort();
+    emit(label+" "+hex(a,8)+" "+hex(b)+" "+hex(c)+" "+std::to_string(d));
+}
+template<class R> void factory(uint64_t seed, const std::string& token, bool text_case) {
+    R source(seed); const auto factory=source.fork_positional();
+    emit("factory-parent "+hex(source.next_long()));
+    if constexpr (!std::is_same_v<R,mcps2::LegacyRandom> && !std::is_same_v<R,mcps2::XoroshiroRandom>)
+        emit("factory-count "+std::to_string(source.count()));
+    if (text_case) {
+        std::u16string text;
+        if (token!="-") for (size_t i=0;i<token.size();i+=4) text.push_back(char16_t(std::stoul(token.substr(i,4),nullptr,16)));
+        const auto hash=mcps2::seed_from_java_string(text);
+        emit("hash "+hex(hash.low)+" "+hex(hash.high));
+        auto child=factory.from_hash(text); factory_draw("factory-hash",child); return;
+    }
+    const unsigned count=unsigned(std::stoul(token));
+    for (unsigned i=0;i<count;++i) {
+        int32_t x=mcps2::signed32(i*0x9e3779b9u+0x11221122u), y=mcps2::signed32(i*1664525u+54321u), z=mcps2::signed32(i*0x7f4a7c15u+0x13579bdfu);
+        if (i<4) { x=mcps2::signed32(0x80000000u+i); y=-64+int32_t(i); z=2147483647-int32_t(i); }
+        emit("position-seed "+hex(mcps2::positional_seed(x,y,z)));
+        auto at=factory.at(x,y,z); factory_draw("factory-at",at);
+        auto from_seed=factory.from_seed(seed^mcps2::sign_extend32(i*0x9e3779b9u)); factory_draw("factory-seed",from_seed);
+    }
+}
 template<class R> void noise(uint64_t seed, unsigned count) {
     R source(seed); mcps2::ImprovedNoise field(source);
     emit("offsets " + hex(double_bits(field.offset(0))) + " " + hex(double_bits(field.offset(1))) + " " + hex(double_bits(field.offset(2))));
@@ -96,6 +123,13 @@ int main() {
             else if (variant == "xoroshiro") rng<XoroshiroRandom>(value, count);
             else if (variant == "worldgen-legacy") rng<WorldgenRandom<LegacyRandom>>(value, count);
             else if (variant == "worldgen-xoroshiro") rng<WorldgenRandom<XoroshiroRandom>>(value, count);
+            else return 2;
+        } else if (command=="factory" || command=="factory-hash") {
+            std::string variant,seed,token; std::cin>>variant>>seed>>token;
+            if (variant=="legacy") factory<LegacyRandom>(parse_hex(seed),token,command=="factory-hash");
+            else if (variant=="xoroshiro") factory<XoroshiroRandom>(parse_hex(seed),token,command=="factory-hash");
+            else if (variant=="worldgen-legacy") factory<WorldgenRandom<LegacyRandom>>(parse_hex(seed),token,command=="factory-hash");
+            else if (variant=="worldgen-xoroshiro") factory<WorldgenRandom<XoroshiroRandom>>(parse_hex(seed),token,command=="factory-hash");
             else return 2;
         } else if (command == "zero") {
             unsigned count; std::cin >> count; XoroshiroRandom source(0, 0);

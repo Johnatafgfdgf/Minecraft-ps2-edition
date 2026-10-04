@@ -12,6 +12,10 @@
 int main() {
     using namespace mcps2;
     assert(run_boot_checks() == all_boot_checks);
+    const auto empty=seed_from_utf8("");
+    assert(empty.low==0xd41d8cd98f00b204ULL && empty.high==0xe9800998ecf8427eULL);
+    const auto abc=seed_from_utf8("abc");
+    assert(abc.low==0x900150983cd24fb0ULL && abc.high==0xd6963f7d28e17f72ULL);
     TickClock clock;
     clock.advance(49999); assert(!clock.consume());
     clock.advance(1); assert(clock.consume() && clock.tick() == 1);

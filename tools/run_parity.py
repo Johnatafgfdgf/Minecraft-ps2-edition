@@ -24,17 +24,24 @@ def oracle_symbols(classes):
         'IdMap':'core.IdMapper', 'StateHolder':'world.level.block.state.StateHolder',
         'BlockState':'world.level.block.state.BlockState', 'Property':'world.level.block.state.properties.Property',
         'Noise':'world.level.levelgen.synth.ImprovedNoise',
+        'Factory':'world.level.levelgen.PositionalRandomFactory', 'Seed128':'world.level.levelgen.RandomSupport$Seed128bit',
+        'Mth':'util.Mth',
     }
     for alias, name in names.items():
         result[alias] = classes[prefix + name]['symbol']
     methods = {
         'RandomSource': {'Random.int':'int nextInt()', 'Random.bounded':'int nextInt(int)', 'Random.long':'long nextLong()',
             'Random.boolean':'boolean nextBoolean()', 'Random.float':'float nextFloat()', 'Random.double':'double nextDouble()',
-            'Random.seed':'void setSeed(long)', 'Random.fork':'net.minecraft.util.RandomSource fork()'},
+            'Random.seed':'void setSeed(long)', 'Random.fork':'net.minecraft.util.RandomSource fork()',
+            'Random.positional':'net.minecraft.world.level.levelgen.PositionalRandomFactory forkPositional()'},
         'Worldgen': {'Worldgen.decoration':'long setDecorationSeed(long,int,int)', 'Worldgen.feature':'void setFeatureSeed(long,int,int)',
             'Worldgen.large':'void setLargeFeatureSeed(long,int,int)', 'Worldgen.salt':'void setLargeFeatureWithSalt(long,int,int,int)',
             'Worldgen.slime':'net.minecraft.util.RandomSource seedSlimeChunk(int,int,long,long)', 'Worldgen.count':'int getCount()'},
-        'Support': {'Support.mix':'long mixStafford13(long)'},
+        'Support': {'Support.mix':'long mixStafford13(long)', 'Support.hash':'net.minecraft.world.level.levelgen.RandomSupport$Seed128bit seedFromHashOf(java.lang.String)'},
+        'Factory': {'Factory.at':'net.minecraft.util.RandomSource at(int,int,int)',
+            'Factory.hash':'net.minecraft.util.RandomSource fromHashOf(java.lang.String)', 'Factory.seed':'net.minecraft.util.RandomSource fromSeed(long)'},
+        'Seed128': {'Seed128.low':'long seedLo()', 'Seed128.high':'long seedHi()'},
+        'Mth': {'Mth.seed':'long getSeed(int,int,int)'},
         'BlockPos': {'Block.pack':'long asLong(int,int,int)', 'Block.instancePack':'long asLong()', 'Block.x':'int getX(long)', 'Block.y':'int getY(long)', 'Block.z':'int getZ(long)'},
         'SectionPos': {'Section.pack':'long asLong(int,int,int)', 'Section.x':'int x(long)', 'Section.y':'int y(long)',
             'Section.z':'int z(long)', 'Section.relative':'short sectionRelativePos(net.minecraft.core.BlockPos)', 'Section.floor':'int blockToSectionCoord(int)'},
@@ -109,6 +116,24 @@ def noise_cases():
             ('legacy','xoroshiro','worldgen-legacy','worldgen-xoroshiro')]
 
 
+def factory_cases():
+    generator=random.Random(0x1211_53454544)
+    seeds=[0,1,0xffffffffffffffff,0x8000000000000000,0x7fffffffffffffff,0x123456789abcdef0]
+    seeds += [generator.getrandbits(64) for _ in range(10)]
+    texts=['', 'minecraft:temperature','minecraft:continentalness','octave_-15','octave_0',
+           'caf\u00e9','\u4e16\u754c','\U0001f642','\ud800','\udfff','\ud800x\udfff','a\0b']
+    texts += ['a'*n for n in [55,56,57,63,64,65,119,120,127,128,129]]
+    texts += [''.join(chr(generator.randrange(65536)) for _ in range(n)) for n in range(0,72,3)]
+    result=[]
+    for seed in seeds:
+        for variant in ('legacy','xoroshiro','worldgen-legacy','worldgen-xoroshiro'):
+            result.append(f'factory {variant} {seed:016x} 128')
+            for text in texts:
+                encoded=text.encode('utf-16-be',errors='surrogatepass').hex() or '-'
+                result.append(f'factory-hash {variant} {seed:016x} {encoded}')
+    return result
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reference',type=pathlib.Path,default=REFERENCE)
@@ -116,7 +141,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
-    parser.add_argument('--suite',choices=['core','noise'],default='core')
+    parser.add_argument('--suite',choices=['core','noise','factories'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -124,7 +149,8 @@ def main():
         configuration=oracle_symbols(classes)
         properties=output/'symbols.properties'
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
-        inputs=args.cases.read_text().splitlines() if args.cases else (noise_cases() if args.suite=='noise' else cases())
+        generators={'core':cases,'noise':noise_cases,'factories':factory_cases}
+        inputs=args.cases.read_text().splitlines() if args.cases else generators[args.suite]()
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
         subprocess.run([javac,'-d',str(output),str(ROOT/'tools/oracle/Oracle.java')],check=True)
@@ -155,6 +181,8 @@ def main():
             report['scope']=['block-state property transitions via original StateHolder.setValue']
         elif args.suite=='noise':
             report['scope']=['ImprovedNoise construction/random consumption and noise3/noise5 binary64 results']
+        elif args.suite=='factories':
+            report['scope']=['positional factories, fromSeed, Java UTF-16 hash, UTF-8 MD5 seeds, fork consumption and wrapper count']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2))
     except (OSError,ValueError,RuntimeError,KeyError,subprocess.CalledProcessError) as error:

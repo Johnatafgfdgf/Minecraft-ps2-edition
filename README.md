@@ -20,6 +20,7 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - ELF nativo com gsKit/GIF DMA, leitura de controle e ponte POSIX do PS2SDK.
 - Relógio de simulação separado dos frames, sem descartar dívida de ticks.
 - PRNGs Legacy/Xoroshiro, forks, reseeding e derivação de seeds de worldgen.
+- Factories posicionais, hash UTF-16 do Java e seeds MD5/UTF-8, incluindo Unicode.
 - Kernel `ImprovedNoise`, incluindo consumo do PRNG e amostragem binary64 exata.
 - Coordenadas BlockPos/SectionPos/ChunkPos e layout SimpleBitStorage.
 - Fila de ticks pendentes por chunk, com identidade, deduplicação e prioridades.
@@ -31,7 +32,8 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 **Paridade no host:** 1.313 cenários, 75.908 resultados iguais ao servidor original
 1.21.1. Além disso, **33.721 transições de block states** e **32.896 observações de
 ImprovedNoise** coincidiram com as chamadas originais: **142.525 resultados** no
-total. Todos os 26.684 estados também foram conferidos contra o report do jogo.
+nessa base. As factories acrescentam **35.200 resultados**, somando **177.725**.
+Todos os 26.684 estados também foram conferidos contra o report do jogo.
 Isso não valida geração completa, redstone, física nem execução no console.
 O ELF foi compilado para Emotion Engine; boot e desempenho em PS2/PCSX2 ainda
 precisam ser medidos. Cinco probes pequenos executam no ELF e mostram sua máscara
@@ -43,6 +45,7 @@ make ps2     # após configurar PS2DEV, PS2SDK e GSKIT
 make parity  # após importar a referência e configurar JDK 21
 make reference-data && make registry-parity
 make noise-parity
+make factory-parity
 ```
 
 - [Build reproduzível](docs/BUILD.md)
@@ -50,6 +53,7 @@ make noise-parity
 - [Comportamentos analisados e limites dos testes](docs/PARITY.md)
 - [Próximas etapas do port](docs/ROADMAP.md)
 - [Pipeline privada de conteúdo e formatos](docs/CONTENT_PIPELINE.md)
+- [Núcleo numérico da geração](docs/NUMERIC_WORLDGEN.md)
 - [Builds e ELF no GitHub Actions](https://github.com/Johnatafgfdgf/Minecraft-ps2-edition/actions)
 - [Dependências e avisos de terceiros](docs/THIRD_PARTY.md)
 

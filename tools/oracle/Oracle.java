@@ -29,6 +29,42 @@ public final class Oracle {
     static final Class<?>[] XYZ = {int.class, int.class, int.class};
     static boolean statesInitialized = false;
 
+    static String javaString(String token) {
+        if (token.equals("-")) return "";
+        char[] units=new char[token.length()/4];
+        for (int i=0;i<units.length;++i) units[i]=(char)Integer.parseInt(token.substring(i*4,i*4+4),16);
+        return new String(units);
+    }
+    static void factoryDraw(String label, Object child) throws Exception {
+        int a=(int)call("Random.int",child,NONE);
+        long b=nextLong(child);
+        double c=(double)call("Random.double",child,NONE);
+        int d=(int)call("Random.bounded",child,INT,1073741825);
+        emit(label + " " + h32(a) + " " + h64(b) + " " + h64(Double.doubleToRawLongBits(c)) + " " + d);
+    }
+    static void factory(String[] f) throws Exception {
+        long seed=hex(f[2]); Object source=random(f[1],seed);
+        Object factory=call("Random.positional",source,NONE);
+        emit("factory-parent " + h64(nextLong(source)));
+        if (f[1].startsWith("worldgen-")) emit("factory-count " + call("Worldgen.count",source,NONE));
+        if (f[0].equals("factory-hash")) {
+            String text=javaString(f[3]);
+            Object hash=staticCall("Support.hash","Support",new Class<?>[]{String.class},text);
+            emit("hash " + h64((long)call("Seed128.low",hash,NONE)) + " " + h64((long)call("Seed128.high",hash,NONE)));
+            Object child=method("Factory.hash",type("Factory"),String.class).invoke(factory,text);
+            factoryDraw("factory-hash",child); return;
+        }
+        for (int i=0;i<Integer.parseInt(f[3]);++i) {
+            int x=i*0x9e3779b9+0x11221122, y=i*1664525+54321, z=i*0x7f4a7c15+0x13579bdf;
+            if (i<4) { x=Integer.MIN_VALUE+i; y=-64+i; z=Integer.MAX_VALUE-i; }
+            emit("position-seed " + h64((long)staticCall("Mth.seed","Mth",XYZ,x,y,z)));
+            Object child=method("Factory.at",type("Factory"),XYZ).invoke(factory,x,y,z);
+            factoryDraw("factory-at",child);
+            child=method("Factory.seed",type("Factory"),LONG).invoke(factory,seed^(long)(i*0x9e3779b9));
+            factoryDraw("factory-seed",child);
+        }
+    }
+
     static void noise(String[] fields) throws Exception {
         Object source=random(fields[1],hex(fields[2]));
         Object noise=type("Noise").getConstructor(type("RandomSource")).newInstance(source);
@@ -186,6 +222,7 @@ public final class Oracle {
                     case "ticks": ticks(f); break;
                     case "state": state(f); break;
                     case "noise": noise(f); break;
+                    case "factory": case "factory-hash": factory(f); break;
                     case "mix": emit("mix " + h64((long)staticCall("Support.mix","Support",LONG,hex(f[1])))); break;
                     case "zero": {
                         Object source=type("Xoro").getConstructor(long.class,long.class).newInstance(0L,0L);

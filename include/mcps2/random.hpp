@@ -1,11 +1,14 @@
 #pragma once
 #include "mcps2/java_bits.hpp"
+#include "mcps2/seed_hash.hpp"
 #include <cassert>
 #include <type_traits>
 
 namespace mcps2 {
 // Java integer overflow is expressed using unsigned arithmetic, not C++ signed UB.
 uint64_t mix_stafford13(uint64_t value);
+class LegacyPositionalFactory;
+class XoroshiroPositionalFactory;
 
 template<class Source> class BitRandom {
 public:
@@ -53,6 +56,7 @@ public:
         return uint32_t(state_ >> (48 - bits));
     }
     LegacyRandom fork() { return LegacyRandom(next_long()); }
+    LegacyPositionalFactory fork_positional();
     uint64_t state() const { return state_; }
 private:
     uint64_t state_ = 0;
@@ -77,9 +81,47 @@ public:
     }
     uint64_t low() const { return low_; }
     uint64_t high() const { return high_; }
+    XoroshiroPositionalFactory fork_positional();
 private:
     uint64_t low_ = 0, high_ = 0;
 };
+
+class LegacyPositionalFactory {
+public:
+    explicit LegacyPositionalFactory(uint64_t seed) : seed_(seed) {}
+    LegacyRandom at(int32_t x, int32_t y, int32_t z) const { return LegacyRandom(positional_seed(x, y, z) ^ seed_); }
+    LegacyRandom from_seed(uint64_t value) const { return LegacyRandom(value); }
+    LegacyRandom from_hash(std::u16string_view text) const { return LegacyRandom(sign_extend32(java_string_hash(text)) ^ seed_); }
+    LegacyRandom from_hash_ascii(std::string_view text) const {
+        uint32_t value = 0;
+        for (unsigned char unit : text) { assert(unit < 128); value = value * 31 + unit; }
+        return LegacyRandom(sign_extend32(value) ^ seed_);
+    }
+private:
+    uint64_t seed_;
+};
+class XoroshiroPositionalFactory {
+public:
+    XoroshiroPositionalFactory(uint64_t low, uint64_t high) : low_(low), high_(high) {}
+    XoroshiroRandom at(int32_t x, int32_t y, int32_t z) const { return XoroshiroRandom(positional_seed(x, y, z) ^ low_, high_); }
+    XoroshiroRandom from_seed(uint64_t value) const { return XoroshiroRandom(value ^ low_, value ^ high_); }
+    XoroshiroRandom from_hash(std::u16string_view text) const {
+        const Seed128 seed = seed_from_java_string(text);
+        return XoroshiroRandom(seed.low ^ low_, seed.high ^ high_);
+    }
+    XoroshiroRandom from_hash_ascii(std::string_view text) const {
+        for (unsigned char unit : text) { assert(unit < 128); (void)unit; }
+        const Seed128 seed = seed_from_utf8(text);
+        return XoroshiroRandom(seed.low ^ low_, seed.high ^ high_);
+    }
+private:
+    uint64_t low_, high_;
+};
+inline LegacyPositionalFactory LegacyRandom::fork_positional() { return LegacyPositionalFactory(next_long()); }
+inline XoroshiroPositionalFactory XoroshiroRandom::fork_positional() {
+    const uint64_t low = next_long(), high = next_long();
+    return XoroshiroPositionalFactory(low, high);
+}
 
 template<class Source> class WorldgenRandom : public BitRandom<WorldgenRandom<Source>> {
 public:
@@ -92,6 +134,7 @@ public:
         else return uint32_t(source_.next_long() >> (64 - bits));
     }
     uint32_t count() const { return count_; }
+    auto fork_positional() { return source_.fork_positional(); }
     uint64_t decoration_seed(uint64_t seed, int32_t x, int32_t z) {
         set_seed(seed);
         const uint64_t a = this->next_long() | 1;

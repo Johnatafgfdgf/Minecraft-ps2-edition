@@ -22,9 +22,10 @@ Status: **host verificado** = comparação executada contra o JAR oficial;
 | `SimpleBitStorage` / `ZeroBitStorage` | Layout de IDs compactados | operações inteiras | `include/mcps2/bit_storage.hpp` | Host verificado para SimpleBitStorage | Buffer externo; erros explícitos; zero storage testado localmente |
 | `BlockPos` | Coordenada de bloco compactada | Vec3i | `include/mcps2/position.hpp` | Host verificado para packing | Iteradores/vetores ainda pendentes |
 | `SectionPos` / `ChunkPos` | Coordenadas de seção/chunk | BlockPos | `position.hpp` | Host verificado para packing e coord. local | APIs de iteração pendentes |
-| `LegacyRandomSource` / `BitRandomSource` | PRNG de 48 bits e primitivas | bits, gaussian source | `LegacyRandom` / `BitRandom` | Host verificado para primitivas/fork/seed | Gaussian e factories posicionais pendentes; uso único por thread |
-| `Xoroshiro128PlusPlus` / `XoroshiroRandomSource` | PRNG de 128 bits | RandomSupport | `XoroshiroRandom` | Host verificado para primitivas/fork/seed | Gaussian e factories posicionais pendentes |
-| `RandomSupport` | Expansão/mistura/hash de seed | Stafford13, MD5 | `mix_stafford13` e inicialização Xoro | Parcial, host verificado | MD5/string seeds e seed única pendentes |
+| `LegacyRandomSource` / `BitRandomSource` | PRNG de 48 bits e primitivas | bits, gaussian source | `LegacyRandom` / `BitRandom` | Host verificado para primitivas/fork/seed | Gaussian pendente; uso único por thread |
+| `Xoroshiro128PlusPlus` / `XoroshiroRandomSource` | PRNG de 128 bits | RandomSupport | `XoroshiroRandom` | Host verificado para primitivas/fork/seed | Gaussian pendente |
+| `RandomSupport` | Expansão/mistura/hash de seed | Stafford13, MD5 | `mix_stafford13`, inicialização Xoro e `seed_hash.hpp` | Host verificado para expansão e string seeds | Seed única não determinística pendente |
+| `PositionalRandomFactory` e implementações | Seeds por posição/string/seed | Mth, RandomSupport, RandomSource | `LegacyPositionalFactory` / `XoroshiroPositionalFactory` | Host verificado: 35.200 observações | UTF-16 representado por view; wrappers delegam conforme o original |
 | `WorldgenRandom` | PRNG wrapper e seeds de features | RandomSource | `WorldgenRandom<Source>` | Host verificado para primitivas e seeds | Estado Gaussian/API restante pendente |
 | `ScheduledTick` / `TickPriority` | Tempo, prioridade e subordem | BlockPos, tipo canônico | `ScheduledTick`, comparadores | Host verificado na fila por chunk | Tipo é ID canônico; APIs extras pendentes |
 | `LevelChunkTicks` | Pendências/deduplicação por chunk | ScheduledTick, pending saves | `ChunkTickQueue` | Host verificado para schedule/poll | Pool finito com backpressure; persistência/unpack pendentes |
