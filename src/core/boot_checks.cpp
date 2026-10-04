@@ -131,6 +131,31 @@ uint32_t run_boot_checks() {
             && bits(interpolated_value)==0xbfe8eff1753eb662ULL && bits(cell_value)==0xbfe8eff1753eb662ULL
             && chunk.stop()==NoiseChunkResult::ok) mask|=32768;
     }
+    // Exercise both directions of the bulk graph/cache bridge on the EE.
+    // Reusing one CacheOnce input in Add must copy the same array epoch.
+    DensityNode bulk_nodes[3];DensityFrame bulk_points[2];DensityBatchFrame bulk_frames[2];
+    DensityNode leaf_node[1];DensityFrame leaf_point[1];DensityGraph leaf_graph(leaf_node,1);
+    NoiseChunkDensityField leaf_field{&leaf_graph,0,leaf_point,1};
+    NoiseCache bulk_cache[1];NoiseChunk bulk_chunk({0,8,4,8,1,0,0},bulk_cache,1);
+    double cached[128],scratch[128],values[128];NoiseCache* cached_once=nullptr;
+    if (leaf_graph.append({DensityOp::y_gradient,0,0,0,0,8,0,8},id)==DensityResult::ok
+        && bulk_chunk.wrap(NoiseCacheKind::once,leaf_field.function(),cached,128,cached_once)==NoiseChunkResult::ok) {
+        NoiseChunkDensityInput binding{cached_once->function()};DensityInput input;binding.bind(input);
+        DensityGraph bulk_graph(bulk_nodes,3,&input,1);
+        NoiseChunkDensityField bulk_field{&bulk_graph,0,bulk_points,2};
+        bulk_field.batch_frames=bulk_frames;bulk_field.batch_capacity=2;
+        bulk_field.temporary=scratch;bulk_field.temporary_capacity=128;
+        DensityId base,root;
+        if (bulk_graph.append({DensityOp::input,0},base)==DensityResult::ok
+            && bulk_graph.append({DensityOp::add,base,base},root)==DensityResult::ok) {
+            bulk_field.root=root;const auto f=bulk_field.function();
+            bool matched=f.fill(f.state,values,128,bulk_chunk.cell_provider())==NoiseChunkResult::ok;
+            for (unsigned i=0;i<128 && matched;++i) matched=values[i]==2.0*double(7-i/16);
+            NoiseChunkContext c;double value=0;
+            if (matched && bulk_chunk.cell_provider().for_index(0,c)==NoiseChunkResult::ok
+                && f.sample(f.state,c,value)==NoiseChunkResult::ok && value==14) mask|=65536;
+        }
+    }
     return mask;
 }
 }

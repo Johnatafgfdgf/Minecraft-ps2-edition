@@ -23,6 +23,68 @@ NoiseChunkResult fill(NoiseChunkFunction f, double* v, size_t n, NoiseChunkProvi
     if (n && !v) return NoiseChunkResult::workspace_full;
     return f.fill?f.fill(f.state,v,n,p):NoiseChunkResult::invalid_settings;
 }
+DensityResult density_result(NoiseChunkResult r) noexcept {
+    switch (r) {
+    case NoiseChunkResult::ok: return DensityResult::ok;
+    case NoiseChunkResult::inactive: return DensityResult::inactive;
+    case NoiseChunkResult::invalid_index: return DensityResult::invalid_index;
+    case NoiseChunkResult::workspace_full: return DensityResult::workspace_full;
+    case NoiseChunkResult::full: return DensityResult::full;
+    default: return DensityResult::invalid_operation;
+    }
+}
+NoiseChunkResult chunk_result(DensityResult r) noexcept {
+    switch (r) {
+    case DensityResult::ok: return NoiseChunkResult::ok;
+    case DensityResult::inactive: return NoiseChunkResult::inactive;
+    case DensityResult::invalid_index: return NoiseChunkResult::invalid_index;
+    case DensityResult::workspace_full: return NoiseChunkResult::workspace_full;
+    case DensityResult::full: return NoiseChunkResult::full;
+    default: return NoiseChunkResult::invalid_settings;
+    }
+}
+struct ChunkSampleBridge {
+    NoiseChunkFunction function;
+    static DensityResult compute(const void* state, DensityContext context, double& value) noexcept {
+        const auto& p=*static_cast<const ChunkSampleBridge*>(state);
+        return density_result(sample(p.function,{context,context.owner},value));
+    }
+};
+struct BatchSampleBridge {
+    DensitySampleFunction function;
+    static NoiseChunkResult compute(void* state, const NoiseChunkContext& context, double& value) noexcept {
+        const auto& p=*static_cast<const BatchSampleBridge*>(state);
+        return p.function.sample?chunk_result(p.function.sample(p.function.state,context.position(),value)):NoiseChunkResult::invalid_settings;
+    }
+};
+struct BatchProviderBridge {
+    NoiseChunkProvider* provider;
+    static DensityResult at(void* state, int32_t i, DensityContext& context) noexcept {
+        auto& p=*static_cast<BatchProviderBridge*>(state); NoiseChunkContext c;
+        const auto r=p.provider->for_index(i,c);
+        if (r==NoiseChunkResult::ok) context=c.position();
+        return density_result(r);
+    }
+    static DensityResult direct(void* state, double* out, size_t n, DensitySampleFunction f) noexcept {
+        auto& p=*static_cast<BatchProviderBridge*>(state); BatchSampleBridge bridge{f};
+        return density_result(p.provider->fill_direct(out,n,{&bridge,BatchSampleBridge::compute,nullptr,nullptr}));
+    }
+};
+struct ChunkProviderBridge {
+    DensityBatchProvider* provider;
+    static NoiseChunkResult at(void* state, int32_t i, NoiseChunkContext& context) noexcept {
+        auto& p=*static_cast<ChunkProviderBridge*>(state); DensityContext c{0,0,0};
+        if (!p.provider->at) return NoiseChunkResult::invalid_settings;
+        const auto r=p.provider->at(p.provider->state,i,c);
+        if (r==DensityResult::ok) context={c,c.owner};
+        return chunk_result(r);
+    }
+    static NoiseChunkResult direct(void* state, double* out, size_t n, NoiseChunkFunction f) noexcept {
+        auto& p=*static_cast<ChunkProviderBridge*>(state); ChunkSampleBridge bridge{f};
+        if (!p.provider->direct) return NoiseChunkResult::invalid_settings;
+        return chunk_result(p.provider->direct(p.provider->state,out,n,{&bridge,ChunkSampleBridge::compute}));
+    }
+};
 }
 DensityContext NoiseChunkContext::position() const noexcept { return owner?owner->position():point; }
 NoiseChunkResult NoiseChunkProvider::for_index(int32_t i, NoiseChunkContext& c) noexcept {
@@ -90,7 +152,7 @@ NoiseChunkResult NoiseChunk::wrap(NoiseCacheKind kind, NoiseChunkFunction child,
     ++count_; cache=&entry; return NoiseChunkResult::ok;
 }
 DensityContext NoiseChunk::position() const noexcept {
-    return {sum(state_.start_x,state_.in_x),sum(state_.start_y,state_.in_y),sum(state_.start_z,state_.in_z)};
+    return {sum(state_.start_x,state_.in_x),sum(state_.start_y,state_.in_y),sum(state_.start_z,state_.in_z),this};
 }
 NoiseChunkResult NoiseCache::compute(void* opaque, const NoiseChunkContext& context, double& value) noexcept {
     auto& c=*static_cast<NoiseCache*>(opaque); auto& chunk=*c.owner; const auto& s=chunk.state_;
@@ -279,9 +341,26 @@ NoiseChunkResult NoiseChunkDensityField::compute(void* opaque, const NoiseChunkC
     if (!field.graph || !field.graph->node(field.root)) return NoiseChunkResult::invalid_settings;
     if (!field.frames) return NoiseChunkResult::workspace_full;
     const auto r=field.graph->sample(field.root,context.position(),field.frames,field.frame_capacity,value);
-    return r==DensityResult::ok?NoiseChunkResult::ok:NoiseChunkResult::workspace_full;
+    return chunk_result(r);
 }
 NoiseChunkResult NoiseChunkDensityField::fill_array(void* opaque, double* values, size_t count, NoiseChunkProvider& provider) noexcept {
-    return provider.fill_direct(values,count,static_cast<NoiseChunkDensityField*>(opaque)->function());
+    auto& f=*static_cast<NoiseChunkDensityField*>(opaque);
+    if (!f.graph || !f.graph->node(f.root)) return NoiseChunkResult::invalid_settings;
+    BatchProviderBridge bridge{&provider}; DensityBatchProvider p{&bridge,BatchProviderBridge::at,BatchProviderBridge::direct};
+    return chunk_result(f.graph->fill(f.root,values,count,p,f.frames,f.frame_capacity,
+        f.batch_frames?f.batch_frames:&f.inline_frame,f.batch_frames?f.batch_capacity:1,f.temporary,f.temporary_capacity));
+}
+void NoiseChunkDensityInput::bind(DensityInput& input) const noexcept {
+    input.state=this; input.sample=nullptr; input.minimum=source.minimum(); input.maximum=source.maximum();
+    input.checked_sample=compute; input.fill=fill_array;
+}
+DensityResult NoiseChunkDensityInput::compute(const void* opaque, DensityContext context, double& value) noexcept {
+    const auto& input=*static_cast<const NoiseChunkDensityInput*>(opaque);
+    return density_result(sample(input.source,{context,context.owner},value));
+}
+DensityResult NoiseChunkDensityInput::fill_array(const void* opaque, double* values, size_t count, DensityBatchProvider& provider) noexcept {
+    const auto& input=*static_cast<const NoiseChunkDensityInput*>(opaque);
+    ChunkProviderBridge bridge{&provider}; NoiseChunkProvider p{&bridge,ChunkProviderBridge::at,ChunkProviderBridge::direct};
+    return density_result(fill(input.source,values,count,p));
 }
 }

@@ -80,5 +80,27 @@ int main() {
     assert(f.sample(f.state,interpolator.context(),result)==NoiseChunkResult::inactive);
     field.frames=nullptr;f=field.function();result=91;
     assert(f.sample(f.state,{{0,0,0},nullptr},result)==NoiseChunkResult::workspace_full && result==91);
+
+    // Checked graph inputs preserve the cache's owner and failures. A saved
+    // array epoch is reusable without invoking an otherwise unused provider.
+    field.frames=frames;
+    NoiseCache saved_arena[1];NoiseChunk saved({0,8,4,8,1,0,0},saved_arena,1);
+    double saved_buffer[128],first[128],copied[128];NoiseCache* saved_once;
+    assert(saved.wrap(NoiseCacheKind::once,field.function(),saved_buffer,128,saved_once)==NoiseChunkResult::ok);
+    auto saved_function=saved_once->function();
+    assert(saved_function.fill(saved_function.state,first,128,saved.cell_provider())==NoiseChunkResult::ok);
+    NoiseChunkDensityInput binding{saved_function};DensityInput input;binding.bind(input);
+    DensityNode input_node[1];DensityFrame input_frame[1];DensityBatchFrame input_batch[1];
+    DensityGraph input_graph(input_node,1,&input,1);DensityId input_root;
+    assert(input_graph.append({DensityOp::input,0},input_root)==DensityResult::ok);
+    DensityBatchProvider unused;
+    const auto counter=saved.state().array_index;
+    assert(input_graph.fill(input_root,copied,128,unused,input_frame,1,input_batch,1,nullptr,0)==DensityResult::ok);
+    assert(saved.state().array_index==counter);
+    for (unsigned i=0;i<128;++i) assert(bits(first[i])==bits(copied[i]));
+    assert(saved.cell_provider().for_index(-1,context)==NoiseChunkResult::ok);result=91;
+    assert(input_graph.sample(input_root,context.position(),input_frame,1,result)==DensityResult::invalid_index && result==91);
+    binding.source=cell->function();binding.bind(input);result=91;
+    assert(input_graph.sample(input_root,interpolator.position(),input_frame,1,result)==DensityResult::inactive && result==91);
     std::puts("NoiseChunk resource tests passed: external arenas, guards, geometry overflow, state errors and DensityGraph bridge.");
 }

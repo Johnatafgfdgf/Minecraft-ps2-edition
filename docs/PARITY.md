@@ -47,7 +47,7 @@ executar os métodos originais, com todas as bibliotecas do bundle verificadas.
 ## Testes executados — 2026-10-04
 
 `make test`: verificações nativas de limites, dívidas do relógio, overflow,
-armazenamento, capacidade, deduplicação, ordem e dezesseis probes de boot; 17 testes Python da pipeline
+armazenamento, capacidade, deduplicação, ordem e dezessete probes de boot; 17 testes Python da pipeline
 e proteção dos inputs. `make parity`: **1.313 cenários / 75.908 resultados iguais**
 ao JAR original, incluindo sequences intercaladas, seeds negativas/extremas,
 reseed, forks, limites com rejeição, coordenadas negativas/extremas, layout bruto
@@ -136,17 +136,37 @@ sampling 2D com empates/limites de piso e heights/density do End em seis seeds,
 incluindo ilha central, ilhas externas, divisões negativas e overflow Java.
 Simplex 3D e chunks completos não são cobertos por essa suíte.
 SHA-256: `ba25ede9a980e64868fde971dafc59984fec6b214ce46e1250d24b44c5bbccd9`.
-`make noise-chunk-parity`: **36 cenários / 207.888 registros iguais** ao original.
+`make density-batch-parity`: **2.273 cenários / 145.172 observações iguais** ao
+fillArray original de operações e splines sintéticas. Compara valores, limites,
+callbacks direct/index e hash/contagem da sequência de folhas. O caminho de add
+preenche ambos os filhos em lote; mul/min/max/range usam contextos por índice
+quando exigidos. Não substitui fillArray por compute repetido genericamente.
+SHA-256: `4c30b7094c479628a1b044d4f6e64818d191e6e8fde97501e23100cb653ee808`.
+
+`make density-data-batch-parity`: **630 cenários / 162.540 observações iguais** ao
+fillArray dos routers de RandomState original. Cobre todos os 105 campos vanilla
+com seis seeds, valores por bits e hash/contagem direct/index do provider. Os
+contexts são pontos e o Blender é vazio; o oracle não lê os packs nativos.
+SHA-256: `1d4e124aafcf7c257cd89792c5e10a87ccb0530244c37c09f3b259089f4ed548`.
+Os testes de recursos de lote verificam scratch externo, canários, rejeição
+antes de mutação, arrays vazios, preenchimento parcial, erros propagados e
+2.049 níveis sem recursão. Os testes de lote e de recursos NoiseChunk também
+passaram com AddressSanitizer/UndefinedBehaviorSanitizer no host; leak checking
+ficou desativado por restrição do runtime local.
+
+`make noise-chunk-parity`: **66 cenários / 345.298 registros iguais** ao original.
 Verifica NoiseInterpolator, FlatCache, Cache2D, CacheOnce e CacheAllInCell, limites,
 fillArray, contadores, identidade de contexto, indexação, reinício e troca de slices.
 Compara bits binary64 e hash/contagem da sequência de fillers. Os contextos incluem
 coordenadas negativas/extremas e altura 384. A fixture usa wrappers originais sobre
-ImprovedNoise/gradientes originais e folhas instrumentadas; o visitor do router
+ImprovedNoise/gradientes originais e folhas instrumentadas. Trinta cenários ligam
+add/mul/min/max/range originais aos caches e comparam a ponte nativa nos dois
+sentidos, inclusive arrays maiores que a célula. O visitor automático do router
 vanilla e chunks completos não são cobertos. Detalhes em [NOISE_CHUNK.md](NOISE_CHUNK.md).
-SHA-256: `e1cf1e6dab02e1e87637454bb209bf54936620decfb5dbb43181aaf73d36bccc`.
+SHA-256: `36442d77de29fe811a037a2ebdd84396355d65e41c9d397d5ef42ed036309502`.
 Testes nativos adicionais verificam arenas/buffers insuficientes, canários,
 overflow de geometria e workspace da ponte de DensityGraph.
-Total das onze suítes que invocam Minecraft: **941.623 resultados coincidentes**.
+Total das treze suítes que invocam Minecraft: **1.386.745 resultados coincidentes**.
 
 `make float-parity` é uma suíte adicional de **expressões Java 21 próprias**,
 sem invocar métodos Minecraft. Compara a camada nativa de aritmética binary32:
@@ -173,9 +193,9 @@ Build EE concluído com ps2dev v2.0.0 / GCC 15.2.0. ELF 32-bit little-endian MIP
 linkado com o startup/linkfile do PS2SDK. Essa evidência é **compilação**, não
 execução ou medição de FPS. Tamanhos text/data/bss e linker map estão nos artifacts
 e logs do build, sem representar o orçamento de um jogo completo. O código de
-núcleo ainda deve ser medido no EE. O ELF executa dezesseis probes de referência;
-o resultado esperado é máscara `0xffff`, incluindo compatibilidade binary32 e
-interpolação/cache de NoiseChunk.
+núcleo ainda deve ser medido no EE. O ELF executa dezessete probes pequenos;
+o resultado esperado é máscara `0x1ffff`, incluindo compatibilidade binary32,
+interpolação/cache de NoiseChunk e grafo em lote sobre um CacheOnce compartilhado.
 Sua aprovação verifica apenas esses vetores pequenos, não toda a suíte de host.
 
 ## O que os testes ainda não provam

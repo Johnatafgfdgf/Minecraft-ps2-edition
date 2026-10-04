@@ -19,6 +19,7 @@ help:
 	@echo 'make density-parity -> original density graph operations, bounds and lazy evaluation'
 	@echo 'make density-spline-parity -> original nested float splines, bounds and lazy evaluation'
 	@echo 'make density-data-parity -> private vanilla JSON graphs against independently seeded original routers'
+	@echo 'make density-batch-parity / density-data-batch-parity -> original fillArray values and call order'
 	@echo 'make noise-chunk-parity -> original chunk caches, interpolation, counters and cell/slice order'
 	@echo 'make check-public -> reject proprietary/build inputs in tracked files'
 
@@ -29,7 +30,7 @@ build/host/tests: tests/core_tests.cpp $(CORE) $(wildcard include/mcps2/*.hpp)
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/core_tests.cpp $(CORE) -o $@
 
-build/host/parity: tests/parity_runner.cpp $(CORE) $(wildcard include/mcps2/*.hpp)
+build/host/parity: tests/parity_runner.cpp tests/density_batch_fixture.hpp $(CORE) $(wildcard include/mcps2/*.hpp)
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/parity_runner.cpp $(CORE) -o $@
 
@@ -37,7 +38,7 @@ build/host/registry: tests/registry_runner.cpp $(CORE) $(wildcard include/mcps2/
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/registry_runner.cpp $(CORE) -o $@
 
-build/host/density-data: tests/density_data_runner.cpp $(CORE) $(wildcard include/mcps2/*.hpp)
+build/host/density-data: tests/density_data_runner.cpp tests/density_batch_fixture.hpp $(CORE) $(wildcard include/mcps2/*.hpp)
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/density_data_runner.cpp $(CORE) -o $@
 
@@ -49,13 +50,25 @@ build/host/noise-chunk-tests: tests/noise_chunk_tests.cpp $(CORE) $(wildcard inc
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/noise_chunk_tests.cpp $(CORE) -o $@
 
+build/host/density-batch-tests: tests/density_batch_tests.cpp $(CORE) $(wildcard include/mcps2/*.hpp)
+	@mkdir -p $(@D)
+	$(CXX) $(HOST_FLAGS) tests/density_batch_tests.cpp $(CORE) -o $@
+
 .PHONY: noise-chunk-parity
 noise-chunk-parity: build/host/noise-chunk
 	$(PYTHON) tools/run_parity.py --runner build/host/noise-chunk --suite noise-chunk --output .local/noise-chunk-parity
 
-test: build/host/tests build/host/registry build/host/density-data build/host/noise-chunk-tests
+.PHONY: density-batch-parity density-data-batch-parity
+density-batch-parity: build/host/parity
+	$(PYTHON) tools/run_parity.py --runner build/host/parity --suite density-batch --output .local/density-batch-parity
+
+density-data-batch-parity: build/host/density-data
+	$(PYTHON) tools/run_parity.py --runner build/host/density-data --suite density-data-batch --output .local/density-data-batch-parity
+
+test: build/host/tests build/host/registry build/host/density-data build/host/noise-chunk-tests build/host/density-batch-tests
 	./build/host/tests
 	./build/host/noise-chunk-tests
+	./build/host/density-batch-tests
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py' -v
 
 parity: build/host/parity

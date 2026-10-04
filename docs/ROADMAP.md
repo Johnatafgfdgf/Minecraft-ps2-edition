@@ -9,8 +9,10 @@ Aritmética, gradientes, limites e seleção de ramos do grafo de densidade conf
 em grafos sintéticos; todos os 105 campos de routers vanilla, splines e ilhas do
 End conferidos no domínio de pontos. A camada binary32 usa arredondamento e
 comparações explícitos por bits; o build EE audita seu caminho numérico.
-Os cinco wrappers de NoiseChunk e o ciclo de células foram conferidos em fixtures
-originais. A integração ao router vanilla e geração de chunks completos estão pendentes.
+Os cinco wrappers de NoiseChunk, o ciclo de células e fillArray especializado
+dos grafos foram conferidos em fixtures originais. Inputs explícitos ligam
+operadores aos caches. A integração automática ao router vanilla e geração de
+chunks completos estão pendentes.
 A plataforma compila para EE e ainda
 precisa de boot em equipamento. Dados exportados não substituem gameplay.
 
@@ -20,7 +22,7 @@ precisa de boot em equipamento. Dados exportados não substituem gameplay.
    análise própria. Validar a pipeline de assets com um cliente legítimo fornecido.
 2. Completar paletas, seções, cache/streaming, arenas e save codec. Testar eviction
    sem perda de estado, scheduled ticks, fluid ticks e block entities.
-3. Portar fillArray dos operadores, visitor/deduplicação de NoiseChunk e integrar
+3. Portar visitor/deduplicação de NoiseChunk e integrar automaticamente
    seus wrappers já conferidos aos routers ligados à seed; portar aquifers.
    Completar gaussian, demais noises e núcleo numérico
    necessário; integrar biome source, carvers, surface rules, features e

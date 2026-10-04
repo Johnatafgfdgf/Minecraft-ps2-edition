@@ -53,6 +53,21 @@ double gradient(const DensitySpec& s, int32_t y) noexcept {
     if (amount > 1) return s.p1;
     return s.p0 + amount * (s.p1 - s.p0);
 }
+double weird(const DensitySpec& s, const NormalNoise& field, DensityContext context, double value) noexcept {
+    const double scale=s.to_y==0 ? (value < -0.5 ? 0.75 : value < 0 ? 1.0 : value < 0.5 ? 1.5 : 2.0)
+        : (value < -0.75 ? 0.5 : value < -0.5 ? 0.75 : value < 0.5 ? 1.0 : value < 0.75 ? 2.0 : 3.0);
+    return scale*std::fabs(field.sample(double(context.x)/scale,double(context.y)/scale,double(context.z)/scale));
+}
+struct BatchPoint {
+    const DensityGraph* graph;
+    DensityId root;
+    DensityFrame* frames;
+    size_t capacity;
+    static DensityResult compute(const void* state, DensityContext context, double& value) noexcept {
+        const auto& p=*static_cast<const BatchPoint*>(state);
+        return p.graph->sample(p.root,context,p.frames,p.capacity,value);
+    }
+};
 }
 
 DensityGraph::DensityGraph(DensityNode* nodes, size_t capacity, const DensityInput* inputs, size_t input_count,
@@ -75,7 +90,7 @@ DensityResult DensityGraph::append(const DensitySpec& spec, DensityId& id) noexc
         if (d == std::numeric_limits<uint32_t>::max()) return DensityResult::full;
         if (d + 1 > depth) depth = d + 1;
     }
-    if (spec.op == DensityOp::input && (spec.a >= input_count_ || !inputs_[spec.a].sample))
+    if (spec.op == DensityOp::input && (spec.a >= input_count_ || (!inputs_[spec.a].sample && !inputs_[spec.a].checked_sample)))
         return DensityResult::invalid_reference;
     if (normal_noise(spec.op) || spec.op == DensityOp::blended_noise || spec.op == DensityOp::end_islands) {
         if (spec.from_y < 0 || size_t(spec.from_y) >= noise_count_) return DensityResult::invalid_reference;
@@ -162,6 +177,16 @@ DensityResult DensityGraph::append(const DensitySpec& spec, DensityId& id) noexc
             }
         }
     }
+    const auto& s=node.spec;
+    if (s.op==DensityOp::add) {
+        const uint32_t b=nodes_[s.b].temporary_arrays;
+        if (b==UINT32_MAX) return DensityResult::full;
+        node.temporary_arrays=nodes_[s.a].temporary_arrays>b+1?nodes_[s.a].temporary_arrays:b+1;
+    } else if (s.op==DensityOp::multiply || s.op==DensityOp::minimum || s.op==DensityOp::maximum ||
+               s.op==DensityOp::range_choice || s.op==DensityOp::clamp || is_map(s.op) || forwards(s.op) ||
+               s.op==DensityOp::weird_scaled_sampler || s.op==DensityOp::add_constant || s.op==DensityOp::multiply_constant) {
+        node.temporary_arrays=nodes_[s.a].temporary_arrays;
+    }
     id = uint32_t(count_); nodes_[count_++] = node;
     return DensityResult::ok;
 }
@@ -176,7 +201,14 @@ DensityResult DensityGraph::sample(DensityId root, DensityContext context, Densi
         if (frame.stage == 0) {
             if (s.op == DensityOp::constant) { value = s.p0; --top; continue; }
             if (s.op == DensityOp::y_gradient) { value = gradient(s, context.y); --top; continue; }
-            if (s.op == DensityOp::input) { value = inputs_[s.a].sample(inputs_[s.a].state, context); --top; continue; }
+            if (s.op == DensityOp::input) {
+                const auto& input=inputs_[s.a];
+                if (input.checked_sample) {
+                    const auto result=input.checked_sample(input.state,context,value);
+                    if (result!=DensityResult::ok) return result;
+                } else value=input.sample(input.state,context);
+                --top; continue;
+            }
             if (s.op == DensityOp::blend_alpha) { value = 1; --top; continue; }
             if (s.op == DensityOp::blend_offset || s.op == DensityOp::beardifier_marker) { value = 0; --top; continue; }
             if (s.op == DensityOp::blended_noise) { value = noises_[s.from_y].blended->sample(context.x, context.y, context.z); --top; continue; }
@@ -218,9 +250,7 @@ DensityResult DensityGraph::sample(DensityId root, DensityContext context, Densi
         }
         if (frame.stage == 1) {
             if (s.op == DensityOp::weird_scaled_sampler) {
-                const double scale = s.to_y == 0 ? (value < -0.5 ? 0.75 : value < 0 ? 1.0 : value < 0.5 ? 1.5 : 2.0)
-                    : (value < -0.75 ? 0.5 : value < -0.5 ? 0.75 : value < 0.5 ? 1.0 : value < 0.75 ? 2.0 : 3.0);
-                value = scale * std::fabs(noises_[s.from_y].normal->sample(double(context.x) / scale,double(context.y) / scale,double(context.z) / scale));
+                value=weird(s,*noises_[s.from_y].normal,context,value);
                 --top; continue;
             }
             if (forwards(s.op)) { --top; continue; } // SinglePointContext; chunk wrappers/blending are a separate runtime.
@@ -245,5 +275,95 @@ DensityResult DensityGraph::sample(DensityId root, DensityContext context, Densi
         --top;
     }
     output = value; return DensityResult::ok;
+}
+
+DensityResult DensityGraph::fill(DensityId root, double* output, size_t count, DensityBatchProvider& provider,
+                                 DensityFrame* sample_frames, size_t sample_capacity,
+                                 DensityBatchFrame* batch_frames, size_t batch_capacity,
+                                 double* temporary, size_t temporary_capacity) const noexcept {
+    if (root>=count_) return DensityResult::invalid_reference;
+    if (count>size_t(INT32_MAX)) return DensityResult::invalid_operation;
+    if (count>std::numeric_limits<size_t>::max()/sizeof(double)) return DensityResult::workspace_full;
+    if ((count && (!output || !sample_frames || sample_capacity<nodes_[root].depth)) ||
+        !batch_frames || batch_capacity<nodes_[root].depth) return DensityResult::workspace_full;
+    const size_t arrays=nodes_[root].temporary_arrays;
+    if (count && arrays>std::numeric_limits<size_t>::max()/count) return DensityResult::workspace_full;
+    const size_t need=count*arrays;
+    if (need>std::numeric_limits<size_t>::max()/sizeof(double) || temporary_capacity<need || (need && !temporary))
+        return DensityResult::workspace_full;
+    if (need) {
+        const uintptr_t a=reinterpret_cast<uintptr_t>(output),b=reinterpret_cast<uintptr_t>(temporary);
+        if ((a<=b && b-a<count*sizeof(double)) || (b<a && a-b<need*sizeof(double))) return DensityResult::invalid_operation;
+    }
+    size_t top=1,used=0; batch_frames[0]={output,0,root,0};
+    while (top) {
+        auto& f=batch_frames[top-1]; const auto& s=nodes_[f.node].spec; double* out=f.output;
+        if (f.stage==0) {
+            if (s.op==DensityOp::constant || s.op==DensityOp::beardifier_marker ||
+                s.op==DensityOp::blend_alpha || s.op==DensityOp::blend_offset) {
+                const double value=s.op==DensityOp::constant?s.p0:s.op==DensityOp::blend_alpha?1:0;
+                for (size_t i=0;i<count;++i) out[i]=value;
+                --top; continue;
+            }
+            if (s.op==DensityOp::input && inputs_[s.a].fill) {
+                const auto& input=inputs_[s.a]; const auto r=input.fill(input.state,out,count,provider);
+                if (r!=DensityResult::ok) return r;
+                --top; continue;
+            }
+            const bool child_fill=s.op==DensityOp::add || s.op==DensityOp::multiply || s.op==DensityOp::minimum ||
+                s.op==DensityOp::maximum || s.op==DensityOp::range_choice || s.op==DensityOp::clamp || is_map(s.op) ||
+                forwards(s.op) || s.op==DensityOp::weird_scaled_sampler || s.op==DensityOp::add_constant || s.op==DensityOp::multiply_constant;
+            if (!child_fill) {
+                if (!provider.direct) return DensityResult::invalid_operation;
+                const BatchPoint point{this,f.node,sample_frames,sample_capacity};
+                const auto r=provider.direct(provider.state,out,count,{&point,BatchPoint::compute});
+                if (r!=DensityResult::ok) return r;
+                --top; continue;
+            }
+            f.stage=1; batch_frames[top++]={out,used,s.a,0}; continue;
+        }
+        if (s.op==DensityOp::add && f.stage==1) {
+            f.temporary_mark=used; f.stage=2;
+            double* second=count?temporary+used:nullptr; used+=count;
+            // The original allocates a zero-initialized second array. A
+            // provider may fill only its cell extent, leaving a tail intact.
+            for (size_t i=0;i<count;++i) second[i]=0;
+            batch_frames[top++]={second,used,s.b,0}; continue;
+        }
+        if (s.op==DensityOp::add) {
+            for (size_t i=0;i<count;++i) out[i]+=temporary[f.temporary_mark+i];
+            used=f.temporary_mark; --top; continue;
+        }
+        if (forwards(s.op) && s.op!=DensityOp::blend_density) { --top; continue; }
+        if (is_map(s.op) || s.op==DensityOp::clamp || s.op==DensityOp::add_constant || s.op==DensityOp::multiply_constant) {
+            for (size_t i=0;i<count;++i) {
+                if (is_map(s.op)) out[i]=mapped(s.op,out[i]);
+                else if (s.op==DensityOp::clamp) out[i]=clamp(out[i],s.p0,s.p1);
+                else if (s.op==DensityOp::add_constant) out[i]+=s.p0;
+                else out[i]*=s.p0;
+            }
+            --top; continue;
+        }
+        for (size_t i=0;i<count;++i) {
+            const double first=out[i];
+            if (s.op==DensityOp::multiply && first==0) { out[i]=0; continue; }
+            if (s.op==DensityOp::minimum && first<nodes_[s.b].minimum) continue;
+            if (s.op==DensityOp::maximum && first>nodes_[s.b].maximum) continue;
+            if (!provider.at) return DensityResult::invalid_operation;
+            DensityContext context{0,0,0}; auto r=provider.at(provider.state,int32_t(i),context);
+            if (r!=DensityResult::ok) return r;
+            if (s.op==DensityOp::blend_density) continue; // Empty Blender domain; still call forIndex.
+            if (s.op==DensityOp::weird_scaled_sampler) { out[i]=weird(s,*noises_[s.from_y].normal,context,first); continue; }
+            const DensityId child=s.op==DensityOp::range_choice?(first>=s.p0 && first<s.p1?s.b:s.c):s.b;
+            double second=0; r=sample(child,context,sample_frames,sample_capacity,second);
+            if (r!=DensityResult::ok) return r;
+            if (s.op==DensityOp::multiply) out[i]=first*second;
+            else if (s.op==DensityOp::minimum) out[i]=java_min(first,second);
+            else if (s.op==DensityOp::maximum) out[i]=java_max(first,second);
+            else out[i]=second;
+        }
+        --top;
+    }
+    return DensityResult::ok;
 }
 }

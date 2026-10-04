@@ -1,6 +1,7 @@
 #include "mcps2/density_pack.hpp"
 #include "mcps2/worldgen_noise.hpp"
 #include "mcps2/simplex_noise.hpp"
+#include "density_batch_fixture.hpp"
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -39,7 +40,7 @@ int main(int argc,char** argv) {
     std::string command;
     while (std::cin>>command) {
         std::string setting,seed,path;unsigned field,samples;
-        if (command!="density-data") return 2;
+        if (command!="density-data" && command!="density-data-batch") return 2;
         std::cin>>setting>>field>>seed>>samples>>path;
         std::ifstream file(decode_path(path),std::ios::binary);
         if (!file || !std::cin) return 2;
@@ -80,6 +81,15 @@ int main(int argc,char** argv) {
         const auto* root=graph.node(pack.root());
         emit("density-data-bounds "+hex(bits(root->minimum))+" "+hex(bits(root->maximum)));
         std::vector<DensityFrame> frames(graph.required_frames(pack.root()));
+        if (command=="density-data-batch") {
+            std::vector<DensityBatchFrame> bulk(frames.size());
+            std::vector<double> temporary(graph.required_temporary_arrays(pack.root())*samples),out(samples);
+            uint64_t trace=0;DensityBatchFixture fixture{&trace};auto provider=fixture.provider();
+            if (graph.fill(pack.root(),out.data(),samples,provider,frames.data(),frames.size(),bulk.data(),bulk.size(),temporary.data(),temporary.size())!=DensityResult::ok) return 3;
+            for (unsigned i=0;i<samples;++i) emit("density-batch "+std::to_string(i)+" "+hex(bits(out[i])));
+            emit("density-batch-trace "+hex(trace)+" "+std::to_string(fixture.indexed)+" "+std::to_string(fixture.direct_calls));
+            ++case_index;continue;
+        }
         const int32_t edges[]={-1024,-65,-64,-1,0,1,23,24,103,104,127,128,239,240,256,320};
         for (unsigned i=0;i<samples;++i) {
             const int32_t y=i<16?edges[i]:(signed32(i*1664525u+54321u)%2048)-64;

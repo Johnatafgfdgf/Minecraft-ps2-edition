@@ -112,18 +112,35 @@ private:
     static NoiseChunkResult slice_direct(void*, double*, size_t, NoiseChunkFunction) noexcept;
 };
 
-// Bridge for already-bound point DensityGraph fields, e.g. a cache's filler.
-// This does not run the NoiseChunk router visitor or rewrite graph markers.
-// Frames are external, single-use workspace; keep each active filler separate.
+// Bridge for bound DensityGraph fields, including checked cache input bindings.
+// This does not run the vanilla router visitor or rewrite pack markers.
+// Workspaces are single-use; nested cache fillers need separate arenas. The
+// inline batch frame only covers a leaf field; larger graphs require a buffer.
 struct NoiseChunkDensityField {
     const DensityGraph* graph = nullptr;
     DensityId root = 0;
     DensityFrame* frames = nullptr;
     size_t frame_capacity = 0;
     NoiseChunkLimits limits{};
+    DensityBatchFrame* batch_frames = nullptr;
+    size_t batch_capacity = 0;
+    double* temporary = nullptr;
+    size_t temporary_capacity = 0;
+    DensityBatchFrame inline_frame{};
     NoiseChunkFunction function() noexcept;
 private:
     static NoiseChunkResult compute(void*, const NoiseChunkContext&, double&) noexcept;
     static NoiseChunkResult fill_array(void*, double*, size_t, NoiseChunkProvider&) noexcept;
+};
+
+// A graph input backed by a chunk wrapper. Context identity and the wrapper's
+// distinct fillArray path are preserved in both directions. The binding and
+// source/limits must stay at stable addresses throughout the graph's lifetime.
+struct NoiseChunkDensityInput {
+    NoiseChunkFunction source;
+    void bind(DensityInput& input) const noexcept;
+private:
+    static DensityResult compute(const void*, DensityContext, double&) noexcept;
+    static DensityResult fill_array(const void*, double*, size_t, DensityBatchProvider&) noexcept;
 };
 }

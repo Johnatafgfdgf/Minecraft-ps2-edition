@@ -15,7 +15,7 @@ material permanece privado em `.local/`; o código deste runtime é independente
 | `Cache2D` | Uma posição X/Z e seu último valor | `NoiseCacheKind::column` | Chave, sentinel e bypass no fillArray comparados |
 | `CacheOnce` | Última amostra e último array por contador do proprietário | `NoiseCacheKind::once` | Identidade do contexto, prioridade do array, cópia e contadores comparados |
 | `CacheAllInCell` | Valores de uma célula, indexados em Y descendente, X, Z | `NoiseCacheKind::cell` | Preenchimento, estado inativo e fallback comparados |
-| `DensityFunction` usado como filler | Sampling do campo ligado à seed e avaliação em lote | `NoiseChunkFunction`, `NoiseChunkDensityField` | Ponte para campos de ponto; fillArray especializado de cada operador do grafo ainda pendente |
+| `DensityFunction` usado como filler | Sampling do campo ligado à seed e avaliação em lote | `NoiseChunkFunction`, `NoiseChunkDensityField`, `NoiseChunkDensityInput` | Fill especializado e inputs explícitos de caches comparados; visitor automático pendente |
 | `NoiseChunk.wrap` / visitor | Substitui markers, desempacota holders e compartilha wrappers por igualdade | Futuro visitor do router | Pendente; não confundir fixtures de wrappers com router vanilla completo |
 | Aquifer, beardifier, Blender de saves, ore rule | Converte densidade em estados de blocos e mistura versões | Futuros estágios do worldgen | Pendentes; este runtime não produz chunks de blocos |
 
@@ -96,19 +96,27 @@ register reload do GCC 15.2.0 EE; a representação por referência compila no m
 toolchain e conserva os limites comparados ao original.
 
 O callback `fill` é distinto de `sample`. A ponte `NoiseChunkDensityField`
-fornece fill direto para um campo de ponto. Antes de reescrever um router vanilla
-inteiro, é necessário portar os caminhos de fillArray dos operadores e aplicar
-o visitor original, incluindo compartilhamento por igualdade e holders. Usar
-fill direto genericamente para todo o router ainda não está validado.
+executa os caminhos especializados de [fillArray](DENSITY_GRAPH.md), com frames
+de lote e scratch externos. `NoiseChunkDensityInput` liga wrappers ao grafo em
+sentido inverso, preservando identidade, valores em lote e erros. Inputs no EE
+ocupam 32 bytes, e a ponte de input ocupa 16. Workspaces de fillers aninhados
+precisam ser separados; a ponte de campo inclui apenas um frame para um grafo
+folha. Grafos maiores devem fornecer os frames necessários explicitamente.
+O visitor original ainda precisa aplicar markers/holders e compartilhar wrappers
+por igualdade ao router vanilla. As fixtures fazem ligações explícitas.
 
 ## Comparação
 
-`make noise-chunk-parity` usa 36 cenários próprios. O oracle constrói um
+`make noise-chunk-parity` usa 66 cenários próprios. O oracle constrói um
 NoiseChunk **original** com RandomState/registries originais, remove apenas os
 wrappers do router das listas de execução da fixture e registra os cinco tipos
 originais sobre folhas instrumentadas. Não há implementação Java alternativa
 dos caches. As folhas usam ImprovedNoise original com seeds explícitas,
 YClampedGradient original ou padrões numéricos de teste.
+Trinta cenários adicionais criam operadores originais add/mul/min/max/range
+sobre wrappers, preenchendo caches de células e amostrando os grafos resultantes.
+Comparam também arrays maiores que a célula, incluindo o tail inicialmente +0
+do temporário de add. O grafo nativo usa as pontes nos dois sentidos.
 
 A suíte compara valores binary64, limites, estado, contadores, erros e hash da
 sequência de chamadas dos fillers. Cobre tamanhos de célula 4/8/16, altura 384,

@@ -38,6 +38,10 @@ struct Test {
     Leaf leaves[2];
     DensityNode gradient_node[1];DensityFrame gradient_frame[1];
     DensityGraph gradient{gradient_node,1};NoiseChunkDensityField field{&gradient,0,gradient_frame,1};
+    NoiseChunkDensityInput cache_bindings[2];DensityInput cache_inputs[2];
+    DensityNode graph_nodes[5];DensityFrame graph_frames[5];DensityBatchFrame batch_frames[5];
+    DensityGraph graph{graph_nodes,5,cache_inputs,2};
+    NoiseChunkDensityField graph_field{&graph,0,graph_frames,5};std::vector<double> graph_temporary;
     unsigned mode,style,cycles;
     uint64_t trace=0,samples=0,fills=0;
     Test(NoiseChunkSettings s,unsigned m,unsigned f,unsigned c,uint64_t seed)
@@ -47,12 +51,30 @@ struct Test {
         wrap(0,NoiseCacheKind::once,leaves[0].function());wrap(1,NoiseCacheKind::column,leaves[1].function());
         wrap(2,NoiseCacheKind::flat,functions[0]);wrap(3,NoiseCacheKind::interpolated,functions[0]);
         wrap(4,NoiseCacheKind::interpolated,functions[1]);wrap(5,NoiseCacheKind::once,functions[3]);
-        wrap(6,NoiseCacheKind::cell,functions[5]);wrap(7,NoiseCacheKind::cell,functions[5]);
-        wrap(8,NoiseCacheKind::once,functions[5]);wrap(9,NoiseCacheKind::flat,functions[1],false);
+        auto cell_child=functions[5];
+        if (mode>=3) {
+            cache_bindings[0].source=functions[5];cache_bindings[1].source=functions[1];
+            for (unsigned i=0;i<2;++i) cache_bindings[i].bind(cache_inputs[i]);
+            DensityId a,b,root;
+            if (graph.append({DensityOp::input,0},a)!=DensityResult::ok || graph.append({DensityOp::input,1},b)!=DensityResult::ok) std::abort();
+            DensitySpec spec{DensityOp::add,a,b};
+            if (mode>=4 && mode<=6) spec.op=static_cast<DensityOp>(unsigned(DensityOp::multiply)+mode-4);
+            if (mode==7) {
+                DensityId outside;if (graph.append({DensityOp::constant,0,0,0,0,0,0.375},outside)!=DensityResult::ok) std::abort();
+                spec={DensityOp::range_choice,a,b,outside,0,0,-0.15,0.2};
+            }
+            if (graph.append(spec,root)!=DensityResult::ok) std::abort();
+            graph_field.root=root;graph_field.batch_frames=batch_frames;graph_field.batch_capacity=5;
+            graph_temporary.resize(graph.required_temporary_arrays(root)*(size_t(s.cell_width)*s.cell_width*s.cell_height+1));
+            graph_field.temporary=graph_temporary.data();graph_field.temporary_capacity=graph_temporary.size();
+            cell_child=graph_field.function();
+        }
+        wrap(6,NoiseCacheKind::cell,cell_child);wrap(7,NoiseCacheKind::cell,cell_child);
+        wrap(8,NoiseCacheKind::once,cell_child);wrap(9,NoiseCacheKind::flat,functions[1],false);
     }
     void mix(uint64_t value) { trace=(trace*0x100000001b3ULL)^value; }
     void wrap(unsigned i,NoiseCacheKind kind,NoiseChunkFunction child,bool initialize=true) {
-        buffers[i].resize(chunk.required_values(kind));NoiseCache* cache;
+        buffers[i].resize(chunk.required_values(kind)+(kind==NoiseCacheKind::once?1:0));NoiseCache* cache;
         require(chunk.wrap(kind,child,buffers[i].data(),buffers[i].size(),cache,initialize));functions[i]=cache->function();
     }
     std::string tail() { return " "+hex(trace)+" "+std::to_string(samples)+" "+std::to_string(fills); }
@@ -125,6 +147,10 @@ struct Test {
             fill_array("flat-bulk",functions[2],size_t(length));fill_array("cell-bulk",functions[6],size_t(length));
             fill_array("interpolated-bulk",functions[3],size_t(length));fill_array("cell-bulk-repeat",functions[6],size_t(length));
             values("bulk-owner",chunk.context());state("bulk");
+            if (mode>=3) {
+                fill_array("graph-long",functions[8],size_t(length)+1);
+                fill_array("graph-long-repeat",functions[8],size_t(length)+1);
+            }
             operation("stop",chunk.stop());operation("stop-twice",chunk.stop());values("stopped",chunk.context());
         }
     }

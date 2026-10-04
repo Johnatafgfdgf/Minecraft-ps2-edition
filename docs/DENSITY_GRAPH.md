@@ -22,8 +22,8 @@ comportamento; não contém código da Mojang.
 O caminho estudado é `DensityFunction.compute(FunctionContext)` e as factories
 usadas para construir seu grafo. O visitor de ligação de ruídos foi analisado na
 etapa descrita abaixo. Os wrappers de `NoiseChunk` são descritos em
-[NOISE_CHUNK.md](NOISE_CHUNK.md). O fillArray especializado do grafo e seu visitor
-de integração ao router continuam pendentes antes de geração de chunks.
+[NOISE_CHUNK.md](NOISE_CHUNK.md). O caminho `fillArray` também foi portado e
+comparado; o visitor automático de integração ao router continua pendente.
 
 ## Regras numéricas e de avaliação
 
@@ -70,6 +70,54 @@ biomas, aquifers, carvers, superfície, features ou estruturas.
 Cada nó ocupa no máximo 64 bytes; cada frame de avaliação, 24 bytes. A arena e as
 folhas externas devem permanecer válidas durante o uso do grafo. Inputs externos
 declaram seus limites e precisam respeitá-los para manter os atalhos equivalentes.
+
+## Avaliação em lote — fillArray
+
+O bytecode local mostrou caminhos distintos da amostragem repetida de pontos:
+
+| Caminho original | Ordem e efeitos observados | Equivalente nativo |
+| --- | --- | --- |
+| Constant, BeardifierMarker, BlendAlpha, BlendOffset | Preenchem valores constantes sem chamar o provider | Loop direto preservando zeros com sinal |
+| SimpleFunction: gradient, noise, shifts, shifted noise, BlendedNoise, End e Spline | `fillAllDirectly` do provider; compute por contexto | Callback `direct` com o sampler iterativo |
+| Ap2 add | Primeiro filho preenche a saída; segundo preenche um array inicialmente +0; soma em ordem | Frames externos e scratch reutilizável zerado |
+| Ap2 mul/min/max | Primeiro filho em lote; segundo por `forIndex(i)` somente quando necessário | Mesmos atalhos estritos, +0 e Math.min/max |
+| PureTransformer: maps, clamp, MulOrAdd | Filho em lote, depois transforma cada valor sem pedir contexto | Loop após retorno do filho |
+| RangeChoice | Input em lote; `forIndex(i)` e compute apenas do ramo escolhido | Seleção por índice, sem preencher ambos os ramos |
+| TransformerWithContext: BlendDensity e WeirdScaledSampler | Filho em lote; `forIndex(i)` antes da transformação | Contexto preservado mesmo com Blender vazio |
+| Marker e HolderHolder sem visitor | Delegam o fill ao filho | Frames de encaminhamento; tipo preservado no pack |
+
+`DensityGraph::fill` usa duas pilhas externas: frames de lote e frames de ponto.
+No EE fixado, ocupam respectivamente **16 e 24 bytes por nível reservado**. O
+nó continua com 64 bytes, usando padding anterior para o orçamento de scratch.
+`required_frames(root)` fornece um limite conservador para as duas pilhas.
+
+Para N valores, reserve `N * required_temporary_arrays(root)` doubles. Add exige
+`max(A(first), 1 + A(second))` arrays simultâneos; nós que preenchem somente o
+primeiro filho conservam seu orçamento. Filhos usados por compute não reservam
+arrays de lote. Isso reutiliza os temporários sem alterar a ordem de chamadas.
+Não há heap por fill nem recursão do grafo. O runtime verifica capacidades,
+overflow e sobreposição saída/scratch antes de mudar saída ou provider. Os
+demais buffers e callbacks devem respeitar os contratos de vida útil e não
+reentrar nos mesmos frames. Erros de callbacks são propagados; uma falha durante
+execução pode deixar saída parcial, como no caminho original interrompido.
+
+Arrays vazios ainda percorrem os callbacks de fill do grafo; não equivalem a
+omitir a operação inteira. O array temporário é zerado mesmo quando um provider
+preenche apenas sua extensão de célula e deixa o restante intacto.
+
+`make density-batch-parity`: **2.273 cenários / 145.172 observações** de limites,
+valores e hash/contagem das chamadas direct/index e folhas. Inclui operações,
+atalhos e splines aninhadas. `make density-data-batch-parity`: **630 cenários /
+162.540 observações**, cobrindo todos os 105 campos vanilla com seis seeds.
+O oracle chama o fillArray dos routers originais; não lê o MCDG. Esses contexts
+ainda são pontos com Blender vazio, não chunks de blocos.
+
+`NoiseChunkDensityInput` liga explicitamente um wrapper a um input, preservando
+identidade do proprietário, fill separado e erros de estado/índice. A ponte
+`NoiseChunkDensityField` executa agora o fill especializado do grafo. Fixtures
+comparam graphs de add/mul/min/max/range sobre caches originais, inclusive arrays
+maiores que a célula. A ligação automática de markers/holders e deduplicação do
+router vanilla ainda precisam do visitor analisado no original.
 
 ## Ligação de ruídos e dados — análise
 

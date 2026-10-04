@@ -64,6 +64,7 @@ public final class Oracle {
         Object field=method("Router."+f[2],type("Router")).invoke(router);
         emit("density-data-bounds " + h64(Double.doubleToLongBits((double)densityCall("Density.min",field,NONE)))
             + " " + h64(Double.doubleToLongBits((double)densityCall("Density.max",field,NONE))));
+        if (f[0].equals("density-data-batch")) { DensityBatchOracle.observe(field,Integer.parseInt(f[4]),new long[]{0});return; }
         int[] edges={-1024,-65,-64,-1,0,1,23,24,103,104,127,128,239,240,256,320};
         for (int i=0;i<Integer.parseInt(f[4]);++i) {
             int y=i<edges.length?edges[i]:((i*1664525+54321)%2048)-64;
@@ -109,6 +110,9 @@ public final class Oracle {
                 nodes[i]=Proxy.newProxyInstance(d.getClassLoader(),new Class<?>[]{d},(proxy,m,args)->{
                     if (m.getName().equals(symbols.getProperty("Density.min")) && m.getParameterCount()==0) return p0;
                     if (m.getName().equals(symbols.getProperty("Density.max")) && m.getParameterCount()==0) return p1;
+                    if (m.getName().equals(symbols.getProperty("Density.fill")) && m.getParameterCount()==2 && m.getParameterTypes()[0]==double[].class) {
+                        method("Provider.direct",type("ContextProvider"),double[].class,d).invoke(args[1],args[0],proxy);return null;
+                    }
                     if (m.getName().equals(symbols.getProperty("Density.value")) && m.getParameterCount()==1 && type("FunctionContext").isInstance(args[0])) {
                         trace[0]=trace[0]*0x100000001b3L ^ (id+1);
                         int y=(int)method("Context.y",type("FunctionContext")).invoke(args[0]); return y<fy?p0:p1;
@@ -129,6 +133,7 @@ public final class Oracle {
             emit("density-bounds " + i + " " + h64(Double.doubleToLongBits((double)densityCall("Density.min",nodes[i],NONE)))
                 + " " + h64(Double.doubleToLongBits((double)densityCall("Density.max",nodes[i],NONE))));
         }
+        if (f[0].equals("density-batch")) { DensityBatchOracle.observe(nodes[root],samples,trace);return; }
         int[] edges={-1024,-65,-64,-1,0,1,23,24,103,104,127,128,239,240,256,320};
         for (int i=0;i<samples;++i) {
             int y=i<edges.length?edges[i]:((i*1664525+54321)%2048)-64;
@@ -444,7 +449,9 @@ public final class Oracle {
                 String[] f=line.split(" ");
                 switch(f[0]) {
                     case "density": density(f); break;
+                    case "density-batch": density(f); break;
                     case "density-data": densityData(f); break;
+                    case "density-data-batch": densityData(f); break;
                     case "chunk": NoiseChunkOracle.run(f); break;
                     case "rng": rng(f); break;
                     case "pos": position(f); break;

@@ -138,8 +138,17 @@ final class NoiseChunkOracle {
         functions[2]=wrap("ChunkFlat",functions[0],true);
         functions[3]=wrap("ChunkInterpolated",functions[0],true);functions[4]=wrap("ChunkInterpolated",functions[1],true);
         functions[5]=wrap("ChunkOnce",functions[3],true);
-        functions[6]=wrap("ChunkCell",functions[5],true);functions[7]=wrap("ChunkCell",functions[5],true);
-        functions[8]=wrap("ChunkOnce",functions[5],true);functions[9]=wrap("ChunkFlat",functions[1],false);
+        Object cellChild=functions[5];
+        if (mode>=3) {
+            String[] binary={"Functions.add","Functions.mul","Functions.min","Functions.max"};
+            if (mode<=6) cellChild=staticCall(binary[mode-3],"Functions",new Class<?>[]{type("Density"),type("Density")},functions[5],functions[1]);
+            else {
+                Object outside=staticCall("Functions.constant","Functions",new Class<?>[]{double.class},0.375);
+                cellChild=staticCall("Functions.range","Functions",new Class<?>[]{type("Density"),double.class,double.class,type("Density"),type("Density")},functions[5],-0.15,0.2,functions[1],outside);
+            }
+        }
+        functions[6]=wrap("ChunkCell",cellChild,true);functions[7]=wrap("ChunkCell",cellChild,true);
+        functions[8]=wrap("ChunkOnce",cellChild,true);functions[9]=wrap("ChunkFlat",functions[1],false);
     }
     void execute() throws Exception {
         construct();state("construct");
@@ -186,6 +195,10 @@ final class NoiseChunkOracle {
             fillArray("flat-bulk",functions[2],chunk,length);fillArray("cell-bulk",functions[6],chunk,length);
             fillArray("interpolated-bulk",functions[3],chunk,length);fillArray("cell-bulk-repeat",functions[6],chunk,length);
             values("bulk-owner",chunk);state("bulk");
+            if (mode>=3) {
+                fillArray("graph-long",functions[8],chunk,length+1);
+                fillArray("graph-long-repeat",functions[8],chunk,length+1);
+            }
             operation("stop","Chunk.stop",NONE);operation("stop-twice","Chunk.stop",NONE);values("stopped",chunk);
         }
     }

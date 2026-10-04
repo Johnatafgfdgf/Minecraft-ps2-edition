@@ -393,6 +393,13 @@ def noise_chunk_cases():
         for mode in range(3):
             for style in range(2):
                 result.append(f'chunk {width} {height} {min_y} {total_height} {count} {x} {z} {mode} {style} {cycles} {((i+mode)*0x9e3779b97f4a7c15)&((1<<64)-1):016x}')
+    # Bind native graphs to real wrapper inputs, matching original operator
+    # factories around those wrappers. Keep the old 36 fixtures unchanged.
+    for i in (0,1,4):
+        width,height,min_y,total_height,count,x,z,cycles=configurations[i]
+        for mode in range(3,8):
+            for style in range(2):
+                result.append(f'chunk {width} {height} {min_y} {total_height} {count} {x} {z} {mode} {style} {cycles} {((i+mode)*0x9e3779b97f4a7c15)&((1<<64)-1):016x}')
     return result
 
 
@@ -403,7 +410,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
-    parser.add_argument('--suite',choices=['core','noise','simplex','java-float','factories','octaves','blended','density','density-spline','density-data','noise-chunk'],default='core')
+    parser.add_argument('--suite',choices=['core','noise','simplex','java-float','factories','octaves','blended','density','density-spline','density-data','noise-chunk','density-batch','density-data-batch'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -413,11 +420,13 @@ def main():
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
         generators={'core':cases,'noise':noise_cases,'simplex':simplex_cases,'java-float':float_cases,'factories':factory_cases,'octaves':lambda:octave_cases(path,manifest),
                     'blended':lambda:blended_cases(path,manifest),'density':density_cases,'density-spline':spline_cases,
-                    'density-data':lambda:density_data_cases(path,manifest),'noise-chunk':noise_chunk_cases}
+                    'density-data':lambda:density_data_cases(path,manifest),'noise-chunk':noise_chunk_cases,
+                    'density-batch':lambda:[s.replace('density ','density-batch ',1) for s in density_cases()+spline_cases()],
+                    'density-data-batch':lambda:[s.replace('density-data ','density-data-batch ',1) for s in density_data_cases(path,manifest)]}
         inputs=args.cases.read_text().splitlines() if args.cases else generators[args.suite]()
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
-        subprocess.run([javac,'-d',str(output),str(ROOT/'tools/oracle/Oracle.java'),str(ROOT/'tools/oracle/NoiseChunkOracle.java')],check=True)
+        subprocess.run([javac,'-d',str(output),str(ROOT/'tools/oracle/Oracle.java'),str(ROOT/'tools/oracle/NoiseChunkOracle.java'),str(ROOT/'tools/oracle/DensityBatchOracle.java')],check=True)
         cp=os.pathsep.join([str(output)]+[str(path/name) for name in manifest['classpath']])
         original=subprocess.run([java,'-cp',cp,'mcps2.oracle.Oracle',str(properties),str(cases_file)],cwd=output,capture_output=True,text=True,check=True)
         native=subprocess.run([str(args.runner.resolve())]+args.runner_arg,input=cases_file.read_text(),capture_output=True,text=True,check=True)
@@ -469,7 +478,7 @@ def main():
         elif args.suite=='density-spline':
             report['scope']=['original CubicSpline factories and DensityFunctions.Spline compute/bounds',
                              'binary32 Hermite/extrapolation, nested values, zero derivatives, signed zero, NaN and lazy coordinate order',
-                             'synthetic graphs plus separate vanilla router coverage; NoiseChunk wrappers remain pending']
+                             'synthetic graphs; vanilla routers and NoiseChunk integration are covered in separate suites']
         elif args.suite=='density-data':
             report['scope']=['verified vanilla JSON -> private MCDG -> native point graphs compared independently with original RandomState routers',
                              'seeded noise binding including Legacy climate/offset exceptions, named references and point markers',
@@ -480,7 +489,15 @@ def main():
         elif args.suite=='noise-chunk':
             report['scope']=['original NoiseChunk constructors, five runtime cache wrappers and complete cell/slice lifecycle',
                              'binary64 interpolation (Y/X/Z traversal versus X/Y/Z filling), context identity, counters, bulk callbacks and leaf call trace',
-                             'synthetic wrapper wiring with seeded ImprovedNoise and original gradient fields; vanilla router visitor and full chunks remain pending']
+                             'synthetic wrapper wiring with seeded ImprovedNoise, original gradient fields and arithmetic/range graphs around cache inputs',
+                             'automatic vanilla router visitor and full chunks remain pending']
+        elif args.suite=='density-batch':
+            report['scope']=['original fillArray paths for arithmetic, constants, gradients, maps, range choice and nested splines',
+                             'synthetic graph values and ordered provider/leaf callback trace; externally buffered iterative native evaluation']
+        elif args.suite=='density-data-batch':
+            report['scope']=['original RandomState router fillArray for all 105 vanilla fields at six world seeds',
+                             'binary64 values and ordered direct/index provider trace; point contexts with empty Blender',
+                             'automatic NoiseChunk visitor and full chunk generation remain pending']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2))
     except (OSError,ValueError,RuntimeError,KeyError,subprocess.CalledProcessError) as error:

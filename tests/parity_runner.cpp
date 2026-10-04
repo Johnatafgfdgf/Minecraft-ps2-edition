@@ -9,6 +9,7 @@
 #include "mcps2/simplex_noise.hpp"
 #include "mcps2/java_float.hpp"
 #include "mcps2/java_math.hpp"
+#include "density_batch_fixture.hpp"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -98,7 +99,7 @@ double density_probe(const void* state,mcps2::DensityContext context) noexcept {
     *p.trace=(*p.trace*0x100000001b3ULL)^(p.id+1);
     return context.y<p.threshold?p.low:p.high;
 }
-void density() {
+void density(bool batch=false) {
     using namespace mcps2;
     unsigned count,root,samples;std::cin>>count>>root>>samples;
     std::vector<DensityNode> nodes(count);std::vector<DensityInput> inputs(count);
@@ -135,6 +136,14 @@ void density() {
         emit("density-bounds "+std::to_string(i)+" "+hex(density_bits(n->minimum))+" "+hex(density_bits(n->maximum)));
     }
     std::vector<DensityFrame> frames(graph.required_frames(root));
+    if (batch) {
+        std::vector<DensityBatchFrame> bulk(frames.size());
+        std::vector<double> temporary(graph.required_temporary_arrays(root)*samples),out(samples);
+        trace=0;DensityBatchFixture fixture{&trace};auto provider=fixture.provider();
+        if (graph.fill(root,out.data(),samples,provider,frames.data(),frames.size(),bulk.data(),bulk.size(),temporary.data(),temporary.size())!=DensityResult::ok) std::abort();
+        for (unsigned i=0;i<samples;++i) emit("density-batch "+std::to_string(i)+" "+hex(density_bits(out[i])));
+        emit("density-batch-trace "+hex(trace)+" "+std::to_string(fixture.indexed)+" "+std::to_string(fixture.direct_calls));return;
+    }
     const int32_t edges[]={-1024,-65,-64,-1,0,1,23,24,103,104,127,128,239,240,256,320};
     for (unsigned i=0;i<samples;++i) {
         const int32_t y=i<16?edges[i]:(mcps2::signed32(i*1664525u+54321u)%2048)-64;
@@ -293,6 +302,8 @@ int main() {
             std::string seed;unsigned count;std::cin>>seed>>count;end_islands(parse_hex(seed),count);
         } else if (command=="density") {
             density();
+        } else if (command=="density-batch") {
+            density(true);
         } else if (command=="blended") {
             std::string variant,seed;unsigned samples;std::cin>>variant>>seed>>samples;
             double values[5];for (double& value:values) { std::string token;std::cin>>token;value=from_double_bits(token); }
