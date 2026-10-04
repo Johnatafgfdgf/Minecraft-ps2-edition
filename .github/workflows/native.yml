@@ -83,6 +83,7 @@ jobs:
           make noise-parity
           make factory-parity
           make octave-parity
+          make blended-parity
           make check-public
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -94,6 +95,7 @@ jobs:
             .local/noise-parity/report.json
             .local/factory-parity/report.json
             .local/octave-parity/report.json
+            .local/blended-parity/report.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 90

@@ -46,7 +46,7 @@ executar os métodos originais, com todas as bibliotecas do bundle verificadas.
 ## Testes executados — 2026-10-04
 
 `make test`: verificações nativas de limites, dívidas do relógio, overflow,
-armazenamento, capacidade, deduplicação, ordem e oito probes de boot; nove testes Python da pipeline
+armazenamento, capacidade, deduplicação, ordem e nove probes de boot; nove testes Python da pipeline
 e proteção dos inputs. `make parity`: **1.313 cenários / 75.908 resultados iguais**
 ao JAR original, incluindo sequences intercaladas, seeds negativas/extremas,
 reseed, forks, limites com rejeição, coordenadas negativas/extremas, layout bruto
@@ -90,7 +90,14 @@ Perlin, além de sampling de NormalNoise. Inclui octaves esparsas, amplitudes ze
 negativas, lista vazia, positivos rejeitados pelo modo Legacy e todos os **60
 parâmetros vanilla** importados privadamente. Comparação binary64 sem tolerância.
 SHA-256: `df1988c3a02bc79aa89822c0f7a601f7c1f71e61731e65657c60d942505fb439`.
-Total das cinco suítes: **349.864 resultados coincidentes**.
+
+`make blended-parity`: **160 cenários / 41.520 observações iguais** ao original:
+40 octaves construídas na ordem original, consumo do source, contador do wrapper,
+bounds, mudança do source via `withNewRandom` e amostragem de densidade nos limites
+de coordenadas/escalas. Os parâmetros vanilla são localizados automaticamente nos
+dados privados; configurações adicionais exercitam escalas extremas permitidas.
+SHA-256: `bfb51330fcc5a0db132b5c595866dc6df835759d464f014a85f1cd323fa604aa`.
+Total das seis suítes: **391.384 resultados coincidentes**.
 
 Testes Python adicionais verificam arquivos truncados, IDs/offsets inválidos,
 CRC/offsets de packs e conversão de um PNG próprio com todas as linhas preservadas.
@@ -101,8 +108,8 @@ Build EE concluído com ps2dev v2.0.0 / GCC 15.2.0. ELF 32-bit little-endian MIP
 linkado com o startup/linkfile do PS2SDK. Essa evidência é **compilação**, não
 execução ou medição de FPS. Tamanhos text/data/bss e linker map estão nos artifacts
 e logs do build, sem representar o orçamento de um jogo completo. O código de
-núcleo ainda deve ser medido no EE. O ELF executa oito probes de referência;
-o resultado esperado é máscara `0xff`.
+núcleo ainda deve ser medido no EE. O ELF executa nove probes de referência;
+o resultado esperado é máscara `0x1ff`.
 Sua aprovação verifica apenas esses vetores pequenos, não toda a suíte de host.
 
 ## O que os testes ainda não provam

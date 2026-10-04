@@ -12,6 +12,7 @@ original. O núcleo será integrado ao gerador de chunks após comparar cada cam
 | `RandomSource.forkPositional` | Estado atual do PRNG | Legacy consome um long; Xoroshiro consome dois; wrapper Worldgen delega ao source sem incrementar seu contador de bits | `fork_positional` |
 | `PerlinNoise` | firstOctave, amplitudes, octaves | Modo moderno deriva cada octave de `octave_N`; modo Legacy cria octave zero primeiro e consome 262 ints por octave ausente; ordem e wrapping são relevantes | `octave_noise.hpp`, host verificado |
 | `NormalNoise` | Dois PerlinNoise e amplitudes | Construção sequencial no mesmo source; segunda entrada multiplicada por 1.0181268882175227; fator depende do intervalo entre amplitudes não nulas | `octave_noise.hpp`, host verificado |
+| `BlendedNoise` | Source, cinco parâmetros, coordenadas inteiras | 16 octaves para cada limite e 8 para o selector; wrapping, quantização Y e clamped lerp na ordem original | `blended_noise.hpp`, host verificado |
 
 A transformação MD5 é uma implementação própria do algoritmo matemático descrito
 no [RFC 1321](https://www.rfc-editor.org/rfc/rfc1321), com buffer de 64 bytes. O
@@ -30,3 +31,10 @@ Não há limite arbitrário fixo de octaves: a capacidade externa retorna erro a
 de consumir o PRNG se o pool for insuficiente. O caminho Legacy mantém o consumo
 original também ao rejeitar parâmetros de octaves positivos. Parâmetros de dados
 originais são lidos do JAR verificado e permanecem em fixtures privadas.
+
+BlendedNoise recebe um pool de 40 entradas e referencia três regiões desse pool.
+Constrói os dois campos de limites antes do selector; reseeding preserva os cinco
+parâmetros originais. O selector decide quando o campo inferior/superior pode ser
+ignorado sem mudar o resultado. A saída ainda é uma função de densidade: não inclui
+aquifers, carvers, surface rules, features, estruturas ou o grafo completo de density
+functions. Próxima integração: esses campos no density graph data-driven.

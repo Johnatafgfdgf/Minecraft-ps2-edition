@@ -30,6 +30,8 @@ def oracle_symbols(classes):
         'Mth':'util.Mth',
         'Perlin':'world.level.levelgen.synth.PerlinNoise','Normal':'world.level.levelgen.synth.NormalNoise',
         'NoiseParameters':'world.level.levelgen.synth.NormalNoise$NoiseParameters',
+        'Blended':'world.level.levelgen.synth.BlendedNoise',
+        'Context':'world.level.levelgen.DensityFunction$SinglePointContext','FunctionContext':'world.level.levelgen.DensityFunction$FunctionContext',
     }
     for alias, name in names.items():
         result[alias] = classes[prefix + name]['symbol']
@@ -54,6 +56,9 @@ def oracle_symbols(classes):
         'Normal': {'Normal.modern':'net.minecraft.world.level.levelgen.synth.NormalNoise create(net.minecraft.util.RandomSource,net.minecraft.world.level.levelgen.synth.NormalNoise$NoiseParameters)',
             'Normal.legacy':'net.minecraft.world.level.levelgen.synth.NormalNoise createLegacyNetherBiome(net.minecraft.util.RandomSource,net.minecraft.world.level.levelgen.synth.NormalNoise$NoiseParameters)',
             'Normal.value':'double getValue(double,double,double)', 'Normal.max':'double maxValue()'},
+        'Blended': {'Blended.value':'double compute(net.minecraft.world.level.levelgen.DensityFunction$FunctionContext)',
+            'Blended.min':'double minValue()', 'Blended.max':'double maxValue()',
+            'Blended.reseed':'net.minecraft.world.level.levelgen.synth.BlendedNoise withNewRandom(net.minecraft.util.RandomSource)'},
         'BlockPos': {'Block.pack':'long asLong(int,int,int)', 'Block.instancePack':'long asLong()', 'Block.x':'int getX(long)', 'Block.y':'int getY(long)', 'Block.z':'int getZ(long)'},
         'SectionPos': {'Section.pack':'long asLong(int,int,int)', 'Section.x':'int x(long)', 'Section.y':'int y(long)',
             'Section.z':'int z(long)', 'Section.relative':'short sectionRelativePos(net.minecraft.core.BlockPos)', 'Section.floor':'int blockToSectionCoord(int)'},
@@ -174,6 +179,30 @@ def octave_cases(reference,manifest):
     return result
 
 
+def blended_cases(reference,manifest):
+    configurations={(0.25,0.125,80.0,160.0,8.0),(1.0,1.0,1.0,1.0,1.0),
+                    (0.001,0.001,1000.0,1000.0,8.0),(1000.0,1000.0,0.001,0.001,1.0),
+                    (0.1,0.25,10.0,20.0,4.0),(0.75,0.25,3.0,7.0,2.0)}
+    def scan(value):
+        if isinstance(value,dict):
+            if value.get('type')=='minecraft:old_blended_noise':
+                configurations.add(tuple(float(value[key]) for key in ('xz_scale','y_scale','xz_factor','y_factor','smear_scale_multiplier')))
+            for child in value.values(): scan(child)
+        elif isinstance(value,list):
+            for child in value: scan(child)
+    with zipfile.ZipFile(reference/manifest['inner_jar']) as jar:
+        for name in jar.namelist():
+            if name.startswith(('data/minecraft/worldgen/density_function/','data/minecraft/worldgen/noise_settings/')) and name.endswith('.json'):
+                scan(json.loads(jar.read(name)))
+    result=[]
+    for variant in ('legacy','xoroshiro','worldgen-legacy','worldgen-xoroshiro'):
+        for seed in (0,1,0xffffffffffffffff,0x8000000000000000,0x123456789abcdef0):
+            for parameters in sorted(configurations):
+                tokens=' '.join(struct.pack('>d',p).hex() for p in parameters)
+                result.append(f'blended {variant} {seed:016x} 256 {tokens}')
+    return result
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reference',type=pathlib.Path,default=REFERENCE)
@@ -181,7 +210,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
-    parser.add_argument('--suite',choices=['core','noise','factories','octaves'],default='core')
+    parser.add_argument('--suite',choices=['core','noise','factories','octaves','blended'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -189,7 +218,8 @@ def main():
         configuration=oracle_symbols(classes)
         properties=output/'symbols.properties'
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
-        generators={'core':cases,'noise':noise_cases,'factories':factory_cases,'octaves':lambda:octave_cases(path,manifest)}
+        generators={'core':cases,'noise':noise_cases,'factories':factory_cases,'octaves':lambda:octave_cases(path,manifest),
+                    'blended':lambda:blended_cases(path,manifest)}
         inputs=args.cases.read_text().splitlines() if args.cases else generators[args.suite]()
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
@@ -226,6 +256,9 @@ def main():
         elif args.suite=='octaves':
             report['scope']=['PerlinNoise/NormalNoise modern and Legacy construction, sparse octaves, max values, binary64 sampling and wrapping',
                              'all 60 original vanilla noise parameter definitions, kept in private fixtures']
+        elif args.suite=='blended':
+            report['scope']=['BlendedNoise construction/parent consumption, min/max bounds, reseeding and binary64 density samples',
+                             'vanilla old_blended_noise parameter sets plus scale/coordinate boundaries']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2))
     except (OSError,ValueError,RuntimeError,KeyError,subprocess.CalledProcessError) as error:

@@ -4,6 +4,7 @@
 #include "mcps2/tick_queue.hpp"
 #include "mcps2/improved_noise.hpp"
 #include "mcps2/octave_noise.hpp"
+#include "mcps2/blended_noise.hpp"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -65,6 +66,27 @@ template<class R> void worldgen(uint64_t seed, int32_t x, int32_t z, int32_t ind
 }
 uint64_t double_bits(double value) { uint64_t bits; std::memcpy(&bits,&value,sizeof(bits)); return bits; }
 double from_double_bits(const std::string& token) { const uint64_t bits=parse_hex(token); double value; std::memcpy(&value,&bits,sizeof(value)); return value; }
+template<class R> void blended(uint64_t seed,unsigned samples,const mcps2::BlendedNoiseParameters& parameters) {
+    mcps2::NoiseOctave storage[mcps2::BlendedNoise::required_octaves];
+    R source(seed);mcps2::BlendedNoise field;
+    if (!field.initialize(source,parameters,storage,mcps2::BlendedNoise::required_octaves)) std::abort();
+    emit("blended-parent "+hex(source.next_long()));
+    if constexpr (!std::is_same_v<R,mcps2::LegacyRandom> && !std::is_same_v<R,mcps2::XoroshiroRandom>)
+        emit("blended-count "+std::to_string(source.count()));
+    emit("blended-bounds "+hex(double_bits(field.min_value()))+" "+hex(double_bits(field.max_value())));
+    const int32_t edges[]={-30000000,-64,-1,0,1,319,4096,30000000};
+    for (unsigned i=0;i<samples;++i) {
+        if (i==128) {
+            R next(seed^0xfedcba9876543210ULL);
+            if (!field.reseed(next,storage,mcps2::BlendedNoise::required_octaves)) std::abort();
+            emit("blended-reseed "+hex(next.next_long()));
+        }
+        const int32_t x=i<8?edges[i]:mcps2::signed32(i*0x9e3779b9u+0x11221122u)%30000001;
+        const int32_t y=i<8?edges[(i+3)%8]:(mcps2::signed32(i*1664525u+54321u)%1024)-64;
+        const int32_t z=i<8?-x:mcps2::signed32(i*0x7f4a7c15u+0x13579bdfu)%30000001;
+        emit("blended "+std::to_string(i)+" "+hex(double_bits(field.sample(x,y,z))));
+    }
+}
 template<class R> void octaves(uint64_t seed,const std::string& mode,int32_t first,const std::vector<double>& amplitudes,unsigned samples) {
     const size_t count=amplitudes.size();
     std::vector<mcps2::NoiseOctave> first_storage(count),second_storage(count);
@@ -157,6 +179,15 @@ int main() {
             else if (variant == "xoroshiro") rng<XoroshiroRandom>(value, count);
             else if (variant == "worldgen-legacy") rng<WorldgenRandom<LegacyRandom>>(value, count);
             else if (variant == "worldgen-xoroshiro") rng<WorldgenRandom<XoroshiroRandom>>(value, count);
+            else return 2;
+        } else if (command=="blended") {
+            std::string variant,seed;unsigned samples;std::cin>>variant>>seed>>samples;
+            double values[5];for (double& value:values) { std::string token;std::cin>>token;value=from_double_bits(token); }
+            const BlendedNoiseParameters parameters{values[0],values[1],values[2],values[3],values[4]};
+            if (variant=="legacy") blended<LegacyRandom>(parse_hex(seed),samples,parameters);
+            else if (variant=="xoroshiro") blended<XoroshiroRandom>(parse_hex(seed),samples,parameters);
+            else if (variant=="worldgen-legacy") blended<WorldgenRandom<LegacyRandom>>(parse_hex(seed),samples,parameters);
+            else if (variant=="worldgen-xoroshiro") blended<WorldgenRandom<XoroshiroRandom>>(parse_hex(seed),samples,parameters);
             else return 2;
         } else if (command=="octaves") {
             std::string variant,seed,mode; int32_t first; size_t count; unsigned samples;

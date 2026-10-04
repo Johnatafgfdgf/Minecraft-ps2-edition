@@ -2,6 +2,7 @@
 #include "mcps2/random.hpp"
 #include "mcps2/improved_noise.hpp"
 #include "mcps2/octave_noise.hpp"
+#include "mcps2/blended_noise.hpp"
 #include <cstring>
 
 namespace mcps2 {
@@ -58,6 +59,13 @@ uint32_t run_boot_checks() {
     if (normal.initialize(normal_source, -6, amplitudes, 7, first_storage, second_storage, 7)
         && normal_source.next_long() == 0x1986c1cae1d8f2c5ULL && bits(normal.max_value()) == 0x4017555555555555ULL
         && bits(normal.sample(-33554432.0,70.125,33554432.0)) == 0x3fe47725c748740bULL) mask |= 128;
+    NoiseOctave blended_storage[BlendedNoise::required_octaves];
+    const BlendedNoiseParameters parameters{0.25,0.125,80,160,8};
+    LegacyRandom blended_source(0); BlendedNoise blended;
+    if (blended.initialize(blended_source, parameters, blended_storage, BlendedNoise::required_octaves)
+        && blended_source.next_long() == 0x4a03dc73d63057fbULL
+        && bits(blended.min_value()) == 0xc055e34bc6a7ef9fULL && bits(blended.max_value()) == 0x4055e34bc6a7ef9fULL
+        && bits(blended.sample(-30000000,0,30000000)) == 0x3fb597a58c0435eaULL) mask |= 256;
     return mask;
 }
 }

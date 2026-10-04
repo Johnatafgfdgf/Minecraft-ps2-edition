@@ -4,7 +4,7 @@ PYTHON ?= python3
 HOST_FLAGS := -std=c++17 -O2 -g -Wall -Wextra -Werror -Wpedantic -ffp-contract=off -fno-fast-math -Iinclude
 CORE := $(wildcard src/core/*.cpp)
 
-.PHONY: help ps2 test parity reference-data registry-parity noise-parity factory-parity octave-parity check-public clean
+.PHONY: help ps2 test parity reference-data registry-parity noise-parity factory-parity octave-parity blended-parity check-public clean
 help:
 	@echo 'make ps2         -> build/ps2/MinecraftPS2.elf (PS2DEV/PS2SDK/GSKIT required)'
 	@echo 'make test        -> native unit tests and import-tool tests'
@@ -13,6 +13,7 @@ help:
 	@echo 'make noise-parity -> exact binary64 noise sampling against original ImprovedNoise'
 	@echo 'make factory-parity -> original positional factories, Unicode/string seeds and fork consumption'
 	@echo 'make octave-parity -> original PerlinNoise/NormalNoise and all vanilla noise parameters'
+	@echo 'make blended-parity -> original blended density sampling and reseeding'
 	@echo 'make check-public -> reject proprietary/build inputs in tracked files'
 
 ps2:
@@ -51,6 +52,9 @@ factory-parity: build/host/parity
 
 octave-parity: build/host/parity
 	$(PYTHON) tools/run_parity.py --runner build/host/parity --suite octaves --output .local/octave-parity
+
+blended-parity: build/host/parity
+	$(PYTHON) tools/run_parity.py --runner build/host/parity --suite blended --output .local/blended-parity
 
 check-public:
 	$(PYTHON) tools/check_public_tree.py

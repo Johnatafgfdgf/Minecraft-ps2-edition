@@ -88,6 +88,33 @@ public final class Oracle {
         }
     }
 
+    static void blended(String[] f) throws Exception {
+        ensureBootstrap();
+        Object source=random(f[1],hex(f[2]));
+        double[] p=new double[5];
+        for (int i=0;i<5;++i) p[i]=Double.longBitsToDouble(hex(f[4+i]));
+        Object field=type("Blended").getConstructor(type("RandomSource"),double.class,double.class,double.class,double.class,double.class)
+            .newInstance(source,p[0],p[1],p[2],p[3],p[4]);
+        emit("blended-parent " + h64(nextLong(source)));
+        if (f[1].startsWith("worldgen-")) emit("blended-count " + call("Worldgen.count",source,NONE));
+        emit("blended-bounds " + h64(Double.doubleToRawLongBits((double)call("Blended.min",field,NONE)))
+            + " " + h64(Double.doubleToRawLongBits((double)call("Blended.max",field,NONE))));
+        int[] edges={-30000000,-64,-1,0,1,319,4096,30000000};
+        for (int i=0;i<Integer.parseInt(f[3]);++i) {
+            if (i==128) {
+                Object next=random(f[1],hex(f[2])^0xfedcba9876543210L);
+                field=call("Blended.reseed",field,new Class<?>[]{type("RandomSource")},next);
+                emit("blended-reseed " + h64(nextLong(next)));
+            }
+            int x=i<8?edges[i]:(i*0x9e3779b9+0x11221122)%30000001;
+            int y=i<8?edges[(i+3)%8]:((i*1664525+54321)%1024)-64;
+            int z=i<8?-x:(i*0x7f4a7c15+0x13579bdf)%30000001;
+            Object context=type("Context").getConstructor(XYZ).newInstance(x,y,z);
+            double value=(double)call("Blended.value",field,new Class<?>[]{type("FunctionContext")},context);
+            emit("blended " + i + " " + h64(Double.doubleToRawLongBits(value)));
+        }
+    }
+
     static String javaString(String token) {
         if (token.equals("-")) return "";
         char[] units=new char[token.length()/4];
@@ -279,6 +306,7 @@ public final class Oracle {
                     case "noise": noise(f); break;
                     case "factory": case "factory-hash": factory(f); break;
                     case "octaves": octaves(f); break;
+                    case "blended": blended(f); break;
                     case "wrap": emit("wrap " + h64(Double.doubleToRawLongBits((double)staticCall("Perlin.wrap","Perlin",new Class<?>[]{double.class},Double.longBitsToDouble(hex(f[1])))))); break;
                     case "mix": emit("mix " + h64((long)staticCall("Support.mix","Support",LONG,hex(f[1])))); break;
                     case "zero": {

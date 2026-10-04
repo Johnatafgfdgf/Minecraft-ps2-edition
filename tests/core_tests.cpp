@@ -5,6 +5,7 @@
 #include "mcps2/tick_clock.hpp"
 #include "mcps2/boot_checks.hpp"
 #include "mcps2/octave_noise.hpp"
+#include "mcps2/blended_noise.hpp"
 #include <cassert>
 #include <cstdio>
 #include <vector>
@@ -27,6 +28,10 @@ int main() {
     NormalNoise combined;
     assert(!combined.initialize(first_source,-4,sparse,3,octave_memory,octave_memory,3));
     assert(!combined.ready());
+    NoiseOctave blended_memory[BlendedNoise::required_octaves]; BlendedNoise blended;
+    LegacyRandom limited(17),same(17);
+    assert(!blended.initialize(limited,{0.25,0.125,80,160,8},blended_memory,BlendedNoise::required_octaves-1));
+    assert(limited.next_long()==same.next_long() && !blended.ready());
     TickClock clock;
     clock.advance(49999); assert(!clock.consume());
     clock.advance(1); assert(clock.consume() && clock.tick() == 1);

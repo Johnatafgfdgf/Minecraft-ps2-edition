@@ -23,6 +23,7 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - Factories posicionais, hash UTF-16 do Java e seeds MD5/UTF-8, incluindo Unicode.
 - Kernel `ImprovedNoise`, incluindo consumo do PRNG e amostragem binary64 exata.
 - `PerlinNoise` e `NormalNoise`, com octaves esparsas, modo Legacy e parâmetros vanilla.
+- `BlendedNoise`, com 40 octaves, seleção dos campos de densidade, bounds e reseeding.
 - Coordenadas BlockPos/SectionPos/ChunkPos e layout SimpleBitStorage.
 - Fila de ticks pendentes por chunk, com identidade, deduplicação e prioridades.
 - Importação privada da referência oficial com verificação de hashes.
@@ -30,13 +31,13 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - Registro nativo de todos os block states/propriedades e transições equivalentes.
 - Gerador privado de registries, world data pack e conversão de texturas pessoais.
 
-**Paridade no host:** **349.864 resultados coincidentes** com chamadas ao servidor
-original 1.21.1 em cinco suítes: primitivas, block states, ImprovedNoise, factories
-e Perlin/Normal. Os testes numéricos comparam bits de double sem tolerância.
+**Paridade no host:** **391.384 resultados coincidentes** com chamadas ao servidor
+original 1.21.1 em seis suítes: primitivas, block states, ImprovedNoise, factories,
+Perlin/Normal e BlendedNoise. Os testes numéricos comparam bits de double sem tolerância.
 Todos os 26.684 estados também foram conferidos contra o report do jogo.
 Isso não valida geração completa, redstone, física nem execução no console.
 O ELF foi compilado para Emotion Engine; boot e desempenho em PS2/PCSX2 ainda
-precisam ser medidos. Oito probes pequenos executam no ELF e mostram sua máscara
+precisam ser medidos. Nove probes pequenos executam no ELF e mostram sua máscara
 de aprovação; não substituem a suíte completa.
 
 ```sh
@@ -47,6 +48,7 @@ make reference-data && make registry-parity
 make noise-parity
 make factory-parity
 make octave-parity
+make blended-parity
 ```
 
 - [Build reproduzível](docs/BUILD.md)
