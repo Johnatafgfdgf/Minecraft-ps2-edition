@@ -5,6 +5,7 @@
 #include "mcps2/improved_noise.hpp"
 #include "mcps2/octave_noise.hpp"
 #include "mcps2/blended_noise.hpp"
+#include "mcps2/density_graph.hpp"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -66,6 +67,42 @@ template<class R> void worldgen(uint64_t seed, int32_t x, int32_t z, int32_t ind
 }
 uint64_t double_bits(double value) { uint64_t bits; std::memcpy(&bits,&value,sizeof(bits)); return bits; }
 double from_double_bits(const std::string& token) { const uint64_t bits=parse_hex(token); double value; std::memcpy(&value,&bits,sizeof(value)); return value; }
+uint64_t density_bits(double value) { return value != value ? 0x7ff8000000000000ULL : double_bits(value); }
+struct DensityProbe { uint64_t* trace; unsigned id; int32_t threshold; double low,high; };
+double density_probe(const void* state,mcps2::DensityContext context) noexcept {
+    const auto& p=*static_cast<const DensityProbe*>(state);
+    *p.trace=(*p.trace*0x100000001b3ULL)^(p.id+1);
+    return context.y<p.threshold?p.low:p.high;
+}
+void density() {
+    using namespace mcps2;
+    unsigned count,root,samples;std::cin>>count>>root>>samples;
+    std::vector<DensityNode> nodes(count);std::vector<DensityInput> inputs(count);
+    std::vector<DensityProbe> probes(count);uint64_t trace=0;
+    // Bindings are installed before their corresponding node is appended; the arena never moves.
+    DensityGraph graph(nodes.data(),count,inputs.data(),count);
+    for (unsigned i=0;i<count;++i) {
+        unsigned op;DensitySpec s;std::string p0,p1;
+        std::cin>>op>>s.a>>s.b>>s.c>>s.from_y>>s.to_y>>p0>>p1;
+        s.op=DensityOp(op);s.p0=from_double_bits(p0);s.p1=from_double_bits(p1);
+        if (s.op==DensityOp::input) {
+            probes[i]={&trace,i,s.from_y,s.p0,s.p1};inputs[i]={&probes[i],density_probe,s.p0,s.p1};s.a=i;
+        }
+        DensityId id;
+        if (graph.append(s,id)!=DensityResult::ok || id!=i) std::abort();
+        const auto* n=graph.node(id);
+        emit("density-bounds "+std::to_string(i)+" "+hex(density_bits(n->minimum))+" "+hex(density_bits(n->maximum)));
+    }
+    std::vector<DensityFrame> frames(graph.required_frames(root));
+    const int32_t edges[]={-1024,-65,-64,-1,0,1,23,24,103,104,127,128,239,240,256,320};
+    for (unsigned i=0;i<samples;++i) {
+        const int32_t y=i<16?edges[i]:(mcps2::signed32(i*1664525u+54321u)%2048)-64;
+        const DensityContext context{mcps2::signed32(i*0x9e3779b9u+0x11221122u)%30000001,y,mcps2::signed32(i*0x7f4a7c15u+0x13579bdfu)%30000001};
+        double value;trace=0;
+        if (graph.sample(root,context,frames.data(),frames.size(),value)!=DensityResult::ok) std::abort();
+        emit("density "+std::to_string(i)+" "+hex(density_bits(value))+" "+hex(trace));
+    }
+}
 template<class R> void blended(uint64_t seed,unsigned samples,const mcps2::BlendedNoiseParameters& parameters) {
     mcps2::NoiseOctave storage[mcps2::BlendedNoise::required_octaves];
     R source(seed);mcps2::BlendedNoise field;
@@ -180,6 +217,8 @@ int main() {
             else if (variant == "worldgen-legacy") rng<WorldgenRandom<LegacyRandom>>(value, count);
             else if (variant == "worldgen-xoroshiro") rng<WorldgenRandom<XoroshiroRandom>>(value, count);
             else return 2;
+        } else if (command=="density") {
+            density();
         } else if (command=="blended") {
             std::string variant,seed;unsigned samples;std::cin>>variant>>seed>>samples;
             double values[5];for (double& value:values) { std::string token;std::cin>>token;value=from_double_bits(token); }

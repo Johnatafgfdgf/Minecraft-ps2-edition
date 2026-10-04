@@ -24,6 +24,7 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - Kernel `ImprovedNoise`, incluindo consumo do PRNG e amostragem binary64 exata.
 - `PerlinNoise` e `NormalNoise`, com octaves esparsas, modo Legacy e parâmetros vanilla.
 - `BlendedNoise`, com 40 octaves, seleção dos campos de densidade, bounds e reseeding.
+- Grafo de densidade com operações aritméticas, gradientes, limites e avaliação de ramos na ordem original.
 - Coordenadas BlockPos/SectionPos/ChunkPos e layout SimpleBitStorage.
 - Fila de ticks pendentes por chunk, com identidade, deduplicação e prioridades.
 - Importação privada da referência oficial com verificação de hashes.
@@ -31,13 +32,14 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - Registro nativo de todos os block states/propriedades e transições equivalentes.
 - Gerador privado de registries, world data pack e conversão de texturas pessoais.
 
-**Paridade no host:** **391.384 resultados coincidentes** com chamadas ao servidor
-original 1.21.1 em seis suítes: primitivas, block states, ImprovedNoise, factories,
-Perlin/Normal e BlendedNoise. Os testes numéricos comparam bits de double sem tolerância.
+**Paridade no host:** **502.210 resultados coincidentes** com chamadas ao servidor
+original 1.21.1 em sete suítes: primitivas, block states, ImprovedNoise, factories,
+Perlin/Normal, BlendedNoise e operações do grafo de densidade. Os testes numéricos
+comparam bits de double sem tolerância; a suíte de densidade normaliza somente payloads de NaN.
 Todos os 26.684 estados também foram conferidos contra o report do jogo.
 Isso não valida geração completa, redstone, física nem execução no console.
 O ELF foi compilado para Emotion Engine; boot e desempenho em PS2/PCSX2 ainda
-precisam ser medidos. Nove probes pequenos executam no ELF e mostram sua máscara
+precisam ser medidos. Dez probes pequenos executam no ELF e mostram sua máscara
 de aprovação; não substituem a suíte completa.
 
 ```sh
@@ -49,6 +51,7 @@ make noise-parity
 make factory-parity
 make octave-parity
 make blended-parity
+make density-parity
 ```
 
 - [Build reproduzível](docs/BUILD.md)
@@ -57,6 +60,7 @@ make blended-parity
 - [Próximas etapas do port](docs/ROADMAP.md)
 - [Pipeline privada de conteúdo e formatos](docs/CONTENT_PIPELINE.md)
 - [Núcleo numérico da geração](docs/NUMERIC_WORLDGEN.md)
+- [Operações e avaliação do grafo de densidade](docs/DENSITY_GRAPH.md)
 - [Builds e ELF no GitHub Actions](https://github.com/Johnatafgfdgf/Minecraft-ps2-edition/actions)
 - [Dependências e avisos de terceiros](docs/THIRD_PARTY.md)
 

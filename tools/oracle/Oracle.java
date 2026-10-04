@@ -40,6 +40,52 @@ public final class Oracle {
         Method member=type(owner).getDeclaredMethod(symbols.getProperty(key));
         member.setAccessible(true); return (double)member.invoke(target);
     }
+    static Object densityCall(String key,Object target,Class<?>[] parameters,Object... arguments) throws Exception {
+        return method(key,type("Density"),parameters).invoke(target,arguments);
+    }
+    static void density(String[] f) throws Exception {
+        ensureBootstrap();
+        int count=Integer.parseInt(f[1]),root=Integer.parseInt(f[2]),samples=Integer.parseInt(f[3]);
+        Object[] nodes=new Object[count]; long[] trace={0};
+        Class<?> d=type("Density");
+        String[] binary={"Functions.add","Functions.mul","Functions.min","Functions.max"};
+        String[] unary={"Density.abs","Density.square","Density.cube","Density.half","Density.quarter","Density.squeeze"};
+        for (int i=0;i<count;++i) {
+            int offset=4+i*8,op=Integer.parseInt(f[offset]),a=Integer.parseInt(f[offset+1]),b=Integer.parseInt(f[offset+2]),c=Integer.parseInt(f[offset+3]);
+            int fy=Integer.parseInt(f[offset+4]),ty=Integer.parseInt(f[offset+5]);
+            double p0=Double.longBitsToDouble(hex(f[offset+6])),p1=Double.longBitsToDouble(hex(f[offset+7]));
+            if (op==0) nodes[i]=staticCall("Functions.constant","Functions",new Class<?>[]{double.class},p0);
+            else if (op==1) nodes[i]=staticCall("Functions.gradient","Functions",new Class<?>[]{int.class,int.class,double.class,double.class},fy,ty,p0,p1);
+            else if (op>=2 && op<=5) nodes[i]=staticCall(binary[op-2],"Functions",new Class<?>[]{d,d},nodes[a],nodes[b]);
+            else if (op==6) nodes[i]=densityCall("Density.clamp",nodes[a],new Class<?>[]{double.class,double.class},p0,p1);
+            else if (op==7) nodes[i]=staticCall("Functions.range","Functions",new Class<?>[]{d,double.class,double.class,d,d},nodes[a],p0,p1,nodes[b],nodes[c]);
+            else if (op>=8 && op<=13) nodes[i]=densityCall(unary[op-8],nodes[a],NONE);
+            else if (op==14) {
+                final int id=i;
+                nodes[i]=Proxy.newProxyInstance(d.getClassLoader(),new Class<?>[]{d},(proxy,m,args)->{
+                    if (m.getName().equals(symbols.getProperty("Density.min")) && m.getParameterCount()==0) return p0;
+                    if (m.getName().equals(symbols.getProperty("Density.max")) && m.getParameterCount()==0) return p1;
+                    if (m.getName().equals(symbols.getProperty("Density.value")) && m.getParameterCount()==1 && type("FunctionContext").isInstance(args[0])) {
+                        trace[0]=trace[0]*0x100000001b3L ^ (id+1);
+                        int y=(int)method("Context.y",type("FunctionContext")).invoke(args[0]); return y<fy?p0:p1;
+                    }
+                    if (m.getName().equals("toString")) return "InstrumentedDensityLeaf";
+                    if (m.isDefault()) return InvocationHandler.invokeDefault(proxy,m,args==null?new Object[0]:args);
+                    throw new UnsupportedOperationException(m.toString());
+                });
+            } else throw new IllegalArgumentException("Unsupported density op " + op);
+            emit("density-bounds " + i + " " + h64(Double.doubleToLongBits((double)densityCall("Density.min",nodes[i],NONE)))
+                + " " + h64(Double.doubleToLongBits((double)densityCall("Density.max",nodes[i],NONE))));
+        }
+        int[] edges={-1024,-65,-64,-1,0,1,23,24,103,104,127,128,239,240,256,320};
+        for (int i=0;i<samples;++i) {
+            int y=i<edges.length?edges[i]:((i*1664525+54321)%2048)-64;
+            Object context=type("Context").getConstructor(XYZ).newInstance((i*0x9e3779b9+0x11221122)%30000001,y,(i*0x7f4a7c15+0x13579bdf)%30000001);
+            trace[0]=0;
+            double v=(double)densityCall("Density.value",nodes[root],new Class<?>[]{type("FunctionContext")},context);
+            emit("density " + i + " " + h64(Double.doubleToLongBits(v)) + " " + h64(trace[0]));
+        }
+    }
     static void octaves(String[] f) throws Exception {
         ensureBootstrap();
         boolean normal=f[3].startsWith("normal"), modern=f[3].equals("modern") || f[3].equals("normal");
@@ -298,6 +344,7 @@ public final class Oracle {
             while ((line=input.readLine())!=null) {
                 String[] f=line.split(" ");
                 switch(f[0]) {
+                    case "density": density(f); break;
                     case "rng": rng(f); break;
                     case "pos": position(f); break;
                     case "storage": storage(f); break;

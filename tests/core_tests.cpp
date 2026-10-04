@@ -6,6 +6,7 @@
 #include "mcps2/boot_checks.hpp"
 #include "mcps2/octave_noise.hpp"
 #include "mcps2/blended_noise.hpp"
+#include "mcps2/density_graph.hpp"
 #include <cassert>
 #include <cstdio>
 #include <vector>
@@ -32,6 +33,24 @@ int main() {
     LegacyRandom limited(17),same(17);
     assert(!blended.initialize(limited,{0.25,0.125,80,160,8},blended_memory,BlendedNoise::required_octaves-1));
     assert(limited.next_long()==same.next_long() && !blended.ready());
+    std::vector<DensityNode> density_nodes(2049); DensityGraph graph(density_nodes.data(),density_nodes.size());
+    DensitySpec s; DensityId id=123;
+    s.op=DensityOp::absolute;
+    assert(graph.append(s,id)==DensityResult::invalid_reference && graph.size()==0 && id==123);
+    s.op=DensityOp::constant;s.p0=-0.25;
+    assert(graph.append(s,id)==DensityResult::ok);
+    for (unsigned i=1;i<density_nodes.size();++i) {
+        s.op=DensityOp::half_negative;s.a=id;
+        assert(graph.append(s,id)==DensityResult::ok);
+    }
+    assert(graph.required_frames(id)==density_nodes.size());
+    std::vector<DensityFrame> density_frames(graph.required_frames(id)); double density_value=17;
+    assert(graph.sample(id,{0,0,0},density_frames.data(),density_frames.size()-1,density_value)==DensityResult::workspace_full);
+    assert(density_value==17);
+    assert(graph.sample(id,{0,0,0},density_frames.data(),density_frames.size(),density_value)==DensityResult::ok && density_value==0);
+    const auto previous_id=id;
+    assert(graph.append(s,id)==DensityResult::full && id==previous_id);
+    assert(graph.sample(uint32_t(graph.size()),{0,0,0},density_frames.data(),density_frames.size(),density_value)==DensityResult::invalid_reference);
     TickClock clock;
     clock.advance(49999); assert(!clock.consume());
     clock.advance(1); assert(clock.consume() && clock.tick() == 1);

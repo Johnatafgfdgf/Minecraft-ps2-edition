@@ -32,10 +32,28 @@ def oracle_symbols(classes):
         'NoiseParameters':'world.level.levelgen.synth.NormalNoise$NoiseParameters',
         'Blended':'world.level.levelgen.synth.BlendedNoise',
         'Context':'world.level.levelgen.DensityFunction$SinglePointContext','FunctionContext':'world.level.levelgen.DensityFunction$FunctionContext',
+        'Density':'world.level.levelgen.DensityFunction','Functions':'world.level.levelgen.DensityFunctions',
     }
     for alias, name in names.items():
         result[alias] = classes[prefix + name]['symbol']
     methods = {
+        'Density': {'Density.value':'double compute(net.minecraft.world.level.levelgen.DensityFunction$FunctionContext)',
+            'Density.min':'double minValue()', 'Density.max':'double maxValue()',
+            'Density.abs':'net.minecraft.world.level.levelgen.DensityFunction abs()',
+            'Density.square':'net.minecraft.world.level.levelgen.DensityFunction square()',
+            'Density.cube':'net.minecraft.world.level.levelgen.DensityFunction cube()',
+            'Density.half':'net.minecraft.world.level.levelgen.DensityFunction halfNegative()',
+            'Density.quarter':'net.minecraft.world.level.levelgen.DensityFunction quarterNegative()',
+            'Density.squeeze':'net.minecraft.world.level.levelgen.DensityFunction squeeze()',
+            'Density.clamp':'net.minecraft.world.level.levelgen.DensityFunction clamp(double,double)'},
+        'Functions': {'Functions.constant':'net.minecraft.world.level.levelgen.DensityFunction constant(double)',
+            'Functions.gradient':'net.minecraft.world.level.levelgen.DensityFunction yClampedGradient(int,int,double,double)',
+            'Functions.add':'net.minecraft.world.level.levelgen.DensityFunction add(net.minecraft.world.level.levelgen.DensityFunction,net.minecraft.world.level.levelgen.DensityFunction)',
+            'Functions.mul':'net.minecraft.world.level.levelgen.DensityFunction mul(net.minecraft.world.level.levelgen.DensityFunction,net.minecraft.world.level.levelgen.DensityFunction)',
+            'Functions.min':'net.minecraft.world.level.levelgen.DensityFunction min(net.minecraft.world.level.levelgen.DensityFunction,net.minecraft.world.level.levelgen.DensityFunction)',
+            'Functions.max':'net.minecraft.world.level.levelgen.DensityFunction max(net.minecraft.world.level.levelgen.DensityFunction,net.minecraft.world.level.levelgen.DensityFunction)',
+            'Functions.range':'net.minecraft.world.level.levelgen.DensityFunction rangeChoice(net.minecraft.world.level.levelgen.DensityFunction,double,double,net.minecraft.world.level.levelgen.DensityFunction,net.minecraft.world.level.levelgen.DensityFunction)'},
+        'FunctionContext': {'Context.y':'int blockY()'},
         'RandomSource': {'Random.int':'int nextInt()', 'Random.bounded':'int nextInt(int)', 'Random.long':'long nextLong()',
             'Random.boolean':'boolean nextBoolean()', 'Random.float':'float nextFloat()', 'Random.double':'double nextDouble()',
             'Random.seed':'void setSeed(long)', 'Random.fork':'net.minecraft.util.RandomSource fork()',
@@ -203,6 +221,43 @@ def blended_cases(reference,manifest):
     return result
 
 
+def density_cases():
+    def node(op,a=0,b=0,c=0,fy=0,ty=0,p0=0,p1=0): return (op,a,b,c,fy,ty,p0,p1)
+    def encode(nodes,samples=128):
+        fields=[]
+        for n in nodes:
+            fields.extend(map(str,n[:6])); fields.extend(struct.pack('>d',float(x)).hex() for x in n[6:])
+        return f'density {len(nodes)} {len(nodes)-1} {samples} ' + ' '.join(fields)
+    result=[]
+    values=[-1000000,-3.25,-1,-0.5,-0.0,0.0,0.125,0.5,1,2.75,1000000]
+    for value in values:
+        for op in range(8,14):
+            for leaf in (0,14): result.append(encode([node(leaf,p0=value,p1=value),node(op)]))
+    for a in values:
+        for b in values:
+            for op in range(2,6):
+                for leaves in ((0,14),(14,0),(14,14)):
+                    result.append(encode([node(leaves[0],p0=a,p1=a),node(leaves[1],p0=b,p1=b),node(op,a=0,b=1)],32))
+    for fy,ty,low,high in [(-64,320,1,-1),(0,1,-0.0,0.0),(1,1,2,3),(64,-64,-2,4),
+                           (-2147483648,2147483647,-3.25,0.75),(0,256,-0.0,-0.0)]:
+        result.append(encode([node(1,fy=fy,ty=ty,p0=low,p1=high)]))
+    for low,high in [(-1,1),(-0.0,0.0),(0.0,-0.0),(2,-2),(-100,100)]:
+        result.append(encode([node(14,p0=-10,p1=10),node(6,p0=low,p1=high)]))
+        result.append(encode([node(14,p0=low,p1=high),node(14,p0=-3,p1=-3),node(14,p0=7,p1=7),node(7,a=0,b=1,c=2,p0=low,p1=high)]))
+    generator=random.Random(0x1211_44454e53495459)
+    for _ in range(256):
+        nodes=[node(1,fy=-64,ty=320,p0=-1,p1=1),node(14,fy=24,p0=-0.5,p1=0.5),node(0,p0=0.25)]
+        for _ in range(generator.randrange(8,48)):
+            op=generator.randrange(14); n=len(nodes)
+            p0,p1=generator.choice(values),generator.choice(values)
+            if op==7: p0,p1=min(p0,p1),max(p0,p1)
+            nodes.append(node(op,generator.randrange(n),generator.randrange(n),generator.randrange(n),
+                              generator.randrange(-64,320),generator.randrange(321,512),p0,p1))
+        result.append(encode(nodes))
+    result.append(encode([node(1,fy=-64,ty=320,p0=-1,p1=1),node(9),node(0,p0=0.64),node(3,a=2,b=1),node(13,a=3)]))
+    return result
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reference',type=pathlib.Path,default=REFERENCE)
@@ -210,7 +265,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
-    parser.add_argument('--suite',choices=['core','noise','factories','octaves','blended'],default='core')
+    parser.add_argument('--suite',choices=['core','noise','factories','octaves','blended','density'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -219,7 +274,7 @@ def main():
         properties=output/'symbols.properties'
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
         generators={'core':cases,'noise':noise_cases,'factories':factory_cases,'octaves':lambda:octave_cases(path,manifest),
-                    'blended':lambda:blended_cases(path,manifest)}
+                    'blended':lambda:blended_cases(path,manifest),'density':density_cases}
         inputs=args.cases.read_text().splitlines() if args.cases else generators[args.suite]()
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
@@ -259,11 +314,17 @@ def main():
         elif args.suite=='blended':
             report['scope']=['BlendedNoise construction/parent consumption, min/max bounds, reseeding and binary64 density samples',
                              'vanilla old_blended_noise parameter sets plus scale/coordinate boundaries']
+        elif args.suite=='density':
+            report['scope']=['DensityFunctions arithmetic/gradient/map/clamp/range-choice construction and declared bounds',
+                             'binary64 finite values, signed zeros, NaN semantics and lazy leaf evaluation order',
+                             'synthetic graphs; chunk interpolation and complete vanilla router evaluation not yet covered']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2))
     except (OSError,ValueError,RuntimeError,KeyError,subprocess.CalledProcessError) as error:
         if isinstance(error,subprocess.CalledProcessError):
-            parser.exit(1,f'Parity subprocess failed (exit {error.returncode}):\n{error.stderr or ""}\n')
+            # Bootstrap routes exception stacks through its stdout logger.
+            diagnostics='\n'.join(((error.stdout or '')+'\n'+(error.stderr or '')).splitlines()[-40:])
+            parser.exit(1,f'Parity subprocess failed (exit {error.returncode}):\n{diagnostics}\n')
         parser.exit(1,f'Parity failed: {error}\n')
 
 

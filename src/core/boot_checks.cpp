@@ -3,6 +3,7 @@
 #include "mcps2/improved_noise.hpp"
 #include "mcps2/octave_noise.hpp"
 #include "mcps2/blended_noise.hpp"
+#include "mcps2/density_graph.hpp"
 #include <cstring>
 
 namespace mcps2 {
@@ -66,6 +67,17 @@ uint32_t run_boot_checks() {
         && blended_source.next_long() == 0x4a03dc73d63057fbULL
         && bits(blended.min_value()) == 0xc055e34bc6a7ef9fULL && bits(blended.max_value()) == 0x4055e34bc6a7ef9fULL
         && bits(blended.sample(-30000000,0,30000000)) == 0x3fb597a58c0435eaULL) mask |= 256;
+    DensityNode density_nodes[5]; DensityFrame density_frames[5]; DensityGraph graph(density_nodes, 5);
+    const DensitySpec definitions[] = {
+        {DensityOp::y_gradient,0,0,0,-64,320,-1,1}, {DensityOp::square},
+        {DensityOp::constant,0,0,0,0,0,0.64}, {DensityOp::multiply,2,1}, {DensityOp::squeeze,3}
+    };
+    bool accepted = true; DensityId id = 0;
+    for (const auto& definition : definitions) if (graph.append(definition, id) != DensityResult::ok) accepted = false;
+    double density = 0;
+    if (accepted && graph.sample(id, {0,24,0}, density_frames, 5, density) == DensityResult::ok
+        && bits(density) == 0x3fb7f705a895a129ULL && bits(graph.node(id)->minimum) == 0
+        && bits(graph.node(id)->maximum) == 0x3fd3c7ec4ba67feaULL) mask |= 512;
     return mask;
 }
 }

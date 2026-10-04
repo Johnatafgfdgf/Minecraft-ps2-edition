@@ -5,6 +5,8 @@ Esta lista organiza trabalho pendente; não reduz o escopo da Java 1.21.1.
 Etapas concluídas no host: PRNGs/seeds/coordenadas/storage/fila por chunk;
 representação de todos os block states com transições; factories de posição e
 strings; ImprovedNoise/PerlinNoise/NormalNoise/BlendedNoise exatos nos casos comparativos.
+Aritmética, gradientes, limites e seleção de ramos do grafo de densidade conferidos
+em grafos sintéticos; ligação de campos e routers completos ainda pendentes.
 A plataforma compila para EE e ainda
 precisa de boot em equipamento. Dados exportados não substituem gameplay.
 
