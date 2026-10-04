@@ -5,6 +5,8 @@
 #include "mcps2/blended_noise.hpp"
 #include "mcps2/density_graph.hpp"
 #include "mcps2/worldgen_noise.hpp"
+#include "mcps2/simplex_noise.hpp"
+#include "mcps2/java_float.hpp"
 #include <cstring>
 
 namespace mcps2 {
@@ -85,6 +87,31 @@ uint32_t run_boot_checks() {
     if (legacy_world.normal(climate,"minecraft:temperature",0,nullptr,0,climate_storage,4)
         && bits(climate.max_value()) == 0x4011c71c71c71c71ULL
         && bits(climate.sample(double(climate_x)*0.25,0,double(climate_z)*0.25)) == 0x3f97868416c77b26ULL) mask |= 1024;
+    LegacyRandom simplex_source(0); SimplexNoise simplex; simplex.initialize(simplex_source);
+    if (simplex_source.next_long() == 0xa15aa3684d0173abULL
+        && bits(simplex.sample(-0.5,0.5)) == 0x3fdfeeb5a7a3e693ULL
+        && bits(simplex.sample(-0.5,-0.5)) == 0x3fd3a873cb3210beULL) mask |= 2048;
+    EndIslandDensity islands; islands.initialize(0);
+    if (bits(islands.height(-970,-486)) == 0x3fce7700u
+        && bits(islands.sample(-970,-486)) == 0x3fd752aae0000000ULL) mask |= 4096;
+    const DensitySplinePoint spline_points[] = {{-1,2,1},{1,-2,2}};
+    const DensitySpline spline_binding{spline_points,2};
+    DensityNode spline_nodes[4]; DensityFrame spline_frames[2];
+    DensityGraph spline_graph(spline_nodes,4,nullptr,0,nullptr,0,&spline_binding,1);
+    const DensitySpec spline_definitions[] = {
+        {DensityOp::constant,0,0,0,0,0,0.5}, {DensityOp::constant,0,0,0,0,0,-0.0},
+        {DensityOp::constant,0,0,0,0,0,0.25}, {DensityOp::spline,0}
+    };
+    accepted=true;
+    for (const auto& definition:spline_definitions) if (spline_graph.append(definition,id)!=DensityResult::ok) accepted=false;
+    if (accepted && spline_graph.sample(id,{0,0,0},spline_frames,2,density)==DensityResult::ok
+        && bits(density)==0x3feec00000000000ULL && bits(spline_graph.node(id)->minimum)==0x8000000000000000ULL
+        && bits(spline_graph.node(id)->maximum)==0x3ff5000000000000ULL) mask |= 8192;
+    const float smallest=java_float::round(0x1p-149);
+    if (bits(java_float::round(16777219.0))==0x4b800002u
+        && bits(java_float::add(1.0f,0x1.8p-23f))==0x3f800002u
+        && bits(java_float::divide(1.0f,10.0f))==0x3dcccccdu
+        && bits(java_float::multiply(smallest,1.0f))==1u) mask |= 16384;
     return mask;
 }
 }

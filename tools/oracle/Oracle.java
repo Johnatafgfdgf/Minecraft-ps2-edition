@@ -75,7 +75,19 @@ public final class Oracle {
     static void density(String[] f) throws Exception {
         ensureBootstrap();
         int count=Integer.parseInt(f[1]),root=Integer.parseInt(f[2]),samples=Integer.parseInt(f[3]);
-        Object[] nodes=new Object[count]; long[] trace={0};
+        Object[] nodes=new Object[count],cubicNodes=new Object[count]; long[] trace={0};
+        List<float[]> locations=new ArrayList<>(),derivatives=new ArrayList<>();List<int[]> valueIds=new ArrayList<>();
+        int tail=4+count*8;
+        if (tail<f.length) {
+            int splineCount=Integer.parseInt(f[tail++]);
+            for (int i=0;i<splineCount;++i) {
+                int size=Integer.parseInt(f[tail++]);float[] ls=new float[size],ds=new float[size];int[] ids=new int[size];
+                for (int j=0;j<size;++j) {
+                    ls[j]=Float.intBitsToFloat((int)hex(f[tail++]));ds[j]=Float.intBitsToFloat((int)hex(f[tail++]));ids[j]=Integer.parseInt(f[tail++]);
+                }
+                locations.add(ls);derivatives.add(ds);valueIds.add(ids);
+            }
+        }
         Class<?> d=type("Density");
         String[] binary={"Functions.add","Functions.mul","Functions.min","Functions.max"};
         String[] unary={"Density.abs","Density.square","Density.cube","Density.half","Density.quarter","Density.squeeze"};
@@ -83,7 +95,10 @@ public final class Oracle {
             int offset=4+i*8,op=Integer.parseInt(f[offset]),a=Integer.parseInt(f[offset+1]),b=Integer.parseInt(f[offset+2]),c=Integer.parseInt(f[offset+3]);
             int fy=Integer.parseInt(f[offset+4]),ty=Integer.parseInt(f[offset+5]);
             double p0=Double.longBitsToDouble(hex(f[offset+6])),p1=Double.longBitsToDouble(hex(f[offset+7]));
-            if (op==0) nodes[i]=staticCall("Functions.constant","Functions",new Class<?>[]{double.class},p0);
+            if (op==0) {
+                nodes[i]=staticCall("Functions.constant","Functions",new Class<?>[]{double.class},p0);
+                cubicNodes[i]=staticCall("Cubic.constant","Cubic",new Class<?>[]{float.class},(float)p0);
+            }
             else if (op==1) nodes[i]=staticCall("Functions.gradient","Functions",new Class<?>[]{int.class,int.class,double.class,double.class},fy,ty,p0,p1);
             else if (op>=2 && op<=5) nodes[i]=staticCall(binary[op-2],"Functions",new Class<?>[]{d,d},nodes[a],nodes[b]);
             else if (op==6) nodes[i]=densityCall("Density.clamp",nodes[a],new Class<?>[]{double.class,double.class},p0,p1);
@@ -102,6 +117,14 @@ public final class Oracle {
                     if (m.isDefault()) return InvocationHandler.invokeDefault(proxy,m,args==null?new Object[0]:args);
                     throw new UnsupportedOperationException(m.toString());
                 });
+            } else if (op==35) {
+                Object holder=staticCall("Holder.direct","Holder",new Class<?>[]{Object.class},nodes[a]);
+                Constructor<?> constructor=type("SplineCoordinate").getDeclaredConstructor(type("Holder"));constructor.setAccessible(true);
+                Object coordinate=constructor.newInstance(holder);
+                List<Object> values=new ArrayList<>();for (int id:valueIds.get(fy)) values.add(cubicNodes[id]);
+                Method create=type("Multipoint").getDeclaredMethod(symbols.getProperty("Multipoint.create"),type("FloatFunction"),float[].class,List.class,float[].class);
+                create.setAccessible(true);cubicNodes[i]=create.invoke(null,coordinate,locations.get(fy),values,derivatives.get(fy));
+                nodes[i]=staticCall("Functions.spline","Functions",new Class<?>[]{type("Cubic")},cubicNodes[i]);
             } else throw new IllegalArgumentException("Unsupported density op " + op);
             emit("density-bounds " + i + " " + h64(Double.doubleToLongBits((double)densityCall("Density.min",nodes[i],NONE)))
                 + " " + h64(Double.doubleToLongBits((double)densityCall("Density.max",nodes[i],NONE))));
@@ -250,6 +273,53 @@ public final class Oracle {
         }
     }
 
+    static void simplex(String[] f) throws Exception {
+        Object source=random(f[1],hex(f[2]));
+        Object field=type("Simplex").getConstructor(type("RandomSource")).newInstance(source);
+        String offsets="simplex-offsets";
+        for (String key:new String[]{"Simplex.xo","Simplex.yo","Simplex.zo"})
+            offsets+=" "+h64(Double.doubleToRawLongBits(type("Simplex").getField(symbols.getProperty(key)).getDouble(field)));
+        emit(offsets);emit("simplex-parent "+h64(nextLong(source)));
+        if (f[1].startsWith("worldgen-")) emit("simplex-count "+call("Worldgen.count",source,NONE));
+        double[] edges={-2147483648.25,-33554432,-256,-1,-0.5,-0.0,0,0.5,1,256,33554432,2147483648.25};
+        for (int i=0;i<Integer.parseInt(f[3]);++i) {
+            double x=i<12?edges[i]:i<40?(i-32)/16.0:(int)(i*0x9e3779b9+0x11221122)/64.0;
+            double y=i<12?edges[11-i]:i<40?0:(int)(i*0x7f4a7c15+0x13579bdf)/128.0;
+            double a=(double)call("Simplex.value",field,new Class<?>[]{double.class,double.class},x,y);
+            double b=(double)call("Simplex.value",field,new Class<?>[]{double.class,double.class},x,x);
+            emit("simplex2 "+i+" "+h64(Double.doubleToLongBits(a))+" "+h64(Double.doubleToLongBits(b)));
+        }
+    }
+    static void javaFloat(String[] f) {
+        int[] edges={0,0x80000000,1,0x80000001,0x007fffff,0x00800000,0x3f000000,0x3f800000,
+            0x3f800001,0x40000000,0x7f7fffff,0xff7fffff,0x7f800000,0xff800000,0x7fc00000,0x7fa00001};
+        int[] state={(int)hex(f[1])};
+        java.util.function.IntSupplier next=()->{state[0]^=state[0]<<13;state[0]^=state[0]>>>17;state[0]^=state[0]<<5;return state[0];};
+        for (int i=0;i<Integer.parseInt(f[2]);++i) {
+            float a=Float.intBitsToFloat(i<256?edges[i/16]:next.getAsInt()),b=Float.intBitsToFloat(i<256?edges[i%16]:next.getAsInt());
+            long hi=Integer.toUnsignedLong(next.getAsInt()),lo=Integer.toUnsignedLong(next.getAsInt());
+            double d=Double.longBitsToDouble(hi<<32|lo);int integer=next.getAsInt();
+            float[] values={a+b,a-b,a*b,a/b,a%b,(float)Math.sqrt((double)a),(float)d,(float)integer,Math.min(a,b),Math.max(a,b)};
+            String record="java-float "+i;for (float v:values) record+=" "+h32(Float.floatToIntBits(v));
+            record+=" "+(a==b?1:0)+" "+(a<b?1:0)+" "+(a<=b?1:0);emit(record);
+        }
+    }
+    static void end(String[] f) throws Exception {
+        ensureBootstrap();Constructor<?> constructor=type("End").getDeclaredConstructor(long.class);constructor.setAccessible(true);
+        Object field=constructor.newInstance(hex(f[1]));
+        Field noiseField=type("End").getDeclaredField(symbols.getProperty("End.noise"));noiseField.setAccessible(true);Object noise=noiseField.get(field);
+        Method height=type("End").getDeclaredMethod(symbols.getProperty("End.height"),type("Simplex"),int.class,int.class);height.setAccessible(true);
+        emit("end-bounds "+h64(Double.doubleToLongBits((double)densityCall("Density.min",field,NONE)))+" "+h64(Double.doubleToLongBits((double)densityCall("Density.max",field,NONE))));
+        for (int i=0;i<Integer.parseInt(f[2]);++i) {
+            int x=i<256?(i-128)*8+i%8:(i*0x9e3779b9+0x11221122)%(i<512?32769:30000001);
+            int z=i<256?((i*97)%257-128)*8-i%8:(i*0x7f4a7c15+0x13579bdf)%(i<512?32769:30000001);
+            float h=(float)height.invoke(null,noise,x,z);
+            Object context=type("Context").getConstructor(XYZ).newInstance(x,0,z);
+            double value=(double)densityCall("Density.value",field,new Class<?>[]{type("FunctionContext")},context);
+            emit("end "+i+" "+h32(Float.floatToIntBits(h))+" "+h64(Double.doubleToLongBits(value)));
+        }
+    }
+
     static void state(String[] fields) throws Exception {
         ensureBootstrap();
         Object map=type("Block").getField(symbols.getProperty("Block.stateMap")).get(null);
@@ -381,6 +451,9 @@ public final class Oracle {
                     case "ticks": ticks(f); break;
                     case "state": state(f); break;
                     case "noise": noise(f); break;
+                    case "simplex": simplex(f); break;
+                    case "java-float": javaFloat(f); break;
+                    case "end": end(f); break;
                     case "factory": case "factory-hash": factory(f); break;
                     case "octaves": octaves(f); break;
                     case "blended": blended(f); break;

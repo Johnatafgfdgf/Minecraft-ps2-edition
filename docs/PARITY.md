@@ -47,7 +47,7 @@ executar os métodos originais, com todas as bibliotecas do bundle verificadas.
 ## Testes executados — 2026-10-04
 
 `make test`: verificações nativas de limites, dívidas do relógio, overflow,
-armazenamento, capacidade, deduplicação, ordem e onze probes de boot; 14 testes Python da pipeline
+armazenamento, capacidade, deduplicação, ordem e quinze probes de boot; 17 testes Python da pipeline
 e proteção dos inputs. `make parity`: **1.313 cenários / 75.908 resultados iguais**
 ao JAR original, incluindo sequences intercaladas, seeds negativas/extremas,
 reseed, forks, limites com rejeição, coordenadas negativas/extremas, layout bruto
@@ -110,17 +110,48 @@ rejeitam workspace insuficiente antes de modificar a saída.
 SHA-256: `57bf1b0d01c5787575948d2e3fd9ba5504e7f5911186b1a8184189182132ab20`.
 Os grafos desta suíte são sintéticos; não são chunks ou routers vanilla completos.
 
-`make density-data-parity`: **558 cenários / 143.406 observações iguais** a
-`RandomState.create`/router do JAR. Os 93 campos compiláveis dos noise settings
+`make density-data-parity`: **630 cenários / 161.910 observações iguais** a
+`RandomState.create`/router do JAR. Todos os 105 campos dos sete noise settings
 vanilla são convertidos automaticamente de JSON privado para MCDG, lidos pelo
 núcleo nativo e ligados a seis seeds. A referência cria os próprios registries e
 noises: não usa os nós convertidos. Isso compara a conversão, o leitor, a ligação
 de seeds e os valores/bounds dos campos no domínio de SinglePointContext.
-SHA-256: `63034b0e36b37892b3c9844444dce4843b2dc8b74d865040033a5fd9888eb27d`.
-Doze campos constam como pendentes por dependerem de spline/end_islands.
+SHA-256: `2a979e39f2f9b6c51720cff2979c89c8cc7b97b086e7da3dc24d74f9d94d9225`.
+Inclui splines, weird_scaled_sampler e end_islands. Os packs MCDG v2 armazenam
+locations/derivatives em binary32 e referências dos valores em pools privados.
 Markers mantêm tipos e comportamento de ponto; wrappers/interpolação de NoiseChunk
 e blending entre versões de saves ainda não foram implementados.
-Total das oito suítes: **645.616 resultados coincidentes**.
+`make density-spline-parity`: **416 cenários / 32.073 observações iguais** às
+factories de CubicSpline e ao compute/bounds da DensityFunctions.Spline original.
+Os grafos sintéticos exercitam extrapolação, um ponto, knots repetidos, derivadas
+zero/extremas, conversão binary32, valores aninhados e coordenadas NaN/inf.
+O hash de folhas confirma a seleção e ordem de avaliação. O teste de recurso
+avalia 1.025 splines aninhadas sem recursão na stack nativa.
+SHA-256: `195f0e34f2a537c168dbf7fe7aa1c8c13b6d6d208c7b7affa986c93620b20e80`.
+
+`make simplex-parity`: **70 cenários / 37.542 observações iguais** ao original.
+Verifica construção/offsets/parent de SimplexNoise em quatro variantes de PRNG,
+sampling 2D com empates/limites de piso e heights/density do End em seis seeds,
+incluindo ilha central, ilhas externas, divisões negativas e overflow Java.
+Simplex 3D e chunks completos não são cobertos por essa suíte.
+SHA-256: `ba25ede9a980e64868fde971dafc59984fec6b214ce46e1250d24b44c5bbccd9`.
+Total das dez suítes que invocam Minecraft: **733.735 resultados coincidentes**.
+
+`make float-parity` é uma suíte adicional de **expressões Java 21 próprias**,
+sem invocar métodos Minecraft. Compara a camada nativa de aritmética binary32:
+operações, min/max, comparações, conversões double/int e sqrt via double, com
+subnormais, zeros com sinal, NaN, infinidades e overflow. Os 16 cenários emitem
+65.536 registros; payloads de NaN são normalizados somente na observação.
+SHA-256: `978ca2607173016ae864b917c10831d049cd63c8fbebb082642dda996ed98ccb`.
+O escopo fica em `.local/float-parity/report.json`. Esses registros
+não são contabilizados como chamadas a mecânicas Minecraft.
+
+`tools/check_ee_float.py` audita cinco objetos EE e quatro helpers binary64
+linkados. Rejeita aritmética, conversão e comparação single-precision na camada
+de precisão/spline/End, permitindo apenas movimentos de registradores. A camada
+usa intermediários binary64, arredondamento explícito por bits para binary32 e
+comparações por bits. A auditoria verifica geração de código; runtime e custo
+no console ainda precisam de medição.
 
 Testes Python adicionais verificam arquivos truncados, IDs/offsets inválidos,
 CRC/offsets de packs e conversão de um PNG próprio com todas as linhas preservadas.
@@ -131,8 +162,8 @@ Build EE concluído com ps2dev v2.0.0 / GCC 15.2.0. ELF 32-bit little-endian MIP
 linkado com o startup/linkfile do PS2SDK. Essa evidência é **compilação**, não
 execução ou medição de FPS. Tamanhos text/data/bss e linker map estão nos artifacts
 e logs do build, sem representar o orçamento de um jogo completo. O código de
-núcleo ainda deve ser medido no EE. O ELF executa onze probes de referência;
-o resultado esperado é máscara `0x7ff`.
+núcleo ainda deve ser medido no EE. O ELF executa quinze probes de referência;
+o resultado esperado é máscara `0x7fff`, incluindo compatibilidade binary32.
 Sua aprovação verifica apenas esses vetores pequenos, não toda a suíte de host.
 
 ## O que os testes ainda não provam

@@ -1,5 +1,6 @@
 #include "mcps2/density_pack.hpp"
 #include "mcps2/worldgen_noise.hpp"
+#include "mcps2/simplex_noise.hpp"
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -46,9 +47,11 @@ int main(int argc,char** argv) {
         if (!pack.bind(bytes.data(),bytes.size())) return 3;
         const uint64_t world_seed=std::stoull(seed,nullptr,16); WorldgenNoiseFactory factory(world_seed,pack.legacy());
         std::vector<NormalNoise> normals(pack.resource_count());std::vector<BlendedNoise> blended(pack.resource_count());
+        std::vector<EndIslandDensity> islands(pack.resource_count());
         std::vector<std::vector<NoiseOctave>> pools(pack.resource_count());std::vector<DensityNoiseBinding> bindings(pack.resource_count());
         for (uint32_t i=0;i<pack.resource_count();++i) {
             DensityResourceView r;if (!pack.resource(i,r)) return 3;
+            if (r.kind==2) { islands[i].initialize(world_seed);bindings[i].end=&islands[i];continue; }
             if (r.kind==1) {
                 pools[i].resize(BlendedNoise::required_octaves);
                 if (!factory.blended(blended[i],r.blended,pools[i].data(),pools[i].size())) return 3;
@@ -63,7 +66,13 @@ int main(int argc,char** argv) {
             if (!factory.normal(normals[i],r.name,r.first_octave,amplitudes.data(),amplitudes.size(),pools[i].data(),pools[i].size())) return 3;
             bindings[i].normal=&normals[i];
         }
-        std::vector<DensityNode> nodes(pack.node_count());DensityGraph graph(nodes.data(),nodes.size(),nullptr,0,bindings.data(),bindings.size());
+        std::vector<DensitySplinePoint> points(pack.point_count());std::vector<DensitySpline> splines(pack.spline_count());
+        for (uint32_t i=0;i<pack.point_count();++i) if (!pack.point(i,points[i])) return 3;
+        for (uint32_t i=0;i<pack.spline_count();++i) {
+            DensitySplineView s;if (!pack.spline(i,s)) return 3;
+            splines[i]={points.data()+s.first_point,s.point_count};
+        }
+        std::vector<DensityNode> nodes(pack.node_count());DensityGraph graph(nodes.data(),nodes.size(),nullptr,0,bindings.data(),bindings.size(),splines.data(),splines.size());
         for (uint32_t i=0;i<pack.node_count();++i) {
             DensitySpec spec;DensityId id;
             if (!pack.spec(i,spec) || graph.append(spec,id)!=DensityResult::ok || id!=i) return 3;

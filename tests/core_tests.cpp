@@ -51,6 +51,23 @@ int main() {
     const auto previous_id=id;
     assert(graph.append(s,id)==DensityResult::full && id==previous_id);
     assert(graph.sample(uint32_t(graph.size()),{0,0,0},density_frames.data(),density_frames.size(),density_value)==DensityResult::invalid_reference);
+    // Deep value dependencies require frames too, even when the spline coordinate is a leaf.
+    std::vector<DensityNode> spline_nodes(1026);std::vector<DensitySplinePoint> spline_points(1025);
+    std::vector<DensitySpline> spline_bindings(1025);
+    for (unsigned i=0;i<spline_points.size();++i) {
+        spline_points[i]={0,0,i};spline_bindings[i]={&spline_points[i],1};
+    }
+    DensityGraph spline_graph(spline_nodes.data(),spline_nodes.size(),nullptr,0,nullptr,0,spline_bindings.data(),spline_bindings.size());
+    s={DensityOp::constant,0,0,0,0,0,-0.25};assert(spline_graph.append(s,id)==DensityResult::ok);
+    s={DensityOp::spline,0};s.from_y=1024;
+    assert(spline_graph.append(s,id)==DensityResult::invalid_reference && spline_graph.size()==1);
+    for (unsigned i=0;i<spline_points.size();++i) {
+        s.from_y=int32_t(i);assert(spline_graph.append(s,id)==DensityResult::ok);
+    }
+    assert(spline_graph.required_frames(id)==spline_nodes.size());
+    density_value=17;
+    assert(spline_graph.sample(id,{0,0,0},density_frames.data(),spline_nodes.size()-1,density_value)==DensityResult::workspace_full && density_value==17);
+    assert(spline_graph.sample(id,{0,0,0},density_frames.data(),density_frames.size(),density_value)==DensityResult::ok && density_value==-0.25);
     TickClock clock;
     clock.advance(49999); assert(!clock.consume());
     clock.advance(1); assert(clock.consume() && clock.tick() == 1);

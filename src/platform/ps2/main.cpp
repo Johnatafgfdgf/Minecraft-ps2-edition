@@ -11,7 +11,7 @@ int main(int argc, char** argv) {
     if (!ps2::initialize()) { std::printf("Graphics initialization failed\n"); SleepThread(); return 1; }
     const uint32_t boot_checks = run_boot_checks();
     char checks[96];
-    std::snprintf(checks, sizeof(checks), "Original-JAR golden vectors: %s (%02x / %02x)",
+    std::snprintf(checks, sizeof(checks), "Reference numeric vectors: %s (%02x / %02x)",
         boot_checks == all_boot_checks ? "PASS" : "FAIL", unsigned(boot_checks), unsigned(all_boot_checks));
     std::printf("%s\n", checks);
     TickClock clock;

@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 import pathlib
 import random
@@ -31,6 +32,11 @@ def oracle_symbols(classes):
         'Perlin':'world.level.levelgen.synth.PerlinNoise','Normal':'world.level.levelgen.synth.NormalNoise',
         'NoiseParameters':'world.level.levelgen.synth.NormalNoise$NoiseParameters',
         'Blended':'world.level.levelgen.synth.BlendedNoise',
+        'Simplex':'world.level.levelgen.synth.SimplexNoise',
+        'End':'world.level.levelgen.DensityFunctions$EndIslandDensityFunction',
+        'Cubic':'util.CubicSpline','Multipoint':'util.CubicSpline$Multipoint',
+        'FloatFunction':'util.ToFloatFunction','Holder':'core.Holder',
+        'SplineCoordinate':'world.level.levelgen.DensityFunctions$Spline$Coordinate',
         'Context':'world.level.levelgen.DensityFunction$SinglePointContext','FunctionContext':'world.level.levelgen.DensityFunction$FunctionContext',
         'Density':'world.level.levelgen.DensityFunction','Functions':'world.level.levelgen.DensityFunctions',
         'Vanilla':'data.registries.VanillaRegistries','Provider':'core.HolderGetter$Provider','LookupProvider':'core.HolderLookup$Provider',
@@ -57,6 +63,7 @@ def oracle_symbols(classes):
             'Density.squeeze':'net.minecraft.world.level.levelgen.DensityFunction squeeze()',
             'Density.clamp':'net.minecraft.world.level.levelgen.DensityFunction clamp(double,double)'},
         'Functions': {'Functions.constant':'net.minecraft.world.level.levelgen.DensityFunction constant(double)',
+            'Functions.spline':'net.minecraft.world.level.levelgen.DensityFunction spline(net.minecraft.util.CubicSpline)',
             'Functions.gradient':'net.minecraft.world.level.levelgen.DensityFunction yClampedGradient(int,int,double,double)',
             'Functions.add':'net.minecraft.world.level.levelgen.DensityFunction add(net.minecraft.world.level.levelgen.DensityFunction,net.minecraft.world.level.levelgen.DensityFunction)',
             'Functions.mul':'net.minecraft.world.level.levelgen.DensityFunction mul(net.minecraft.world.level.levelgen.DensityFunction,net.minecraft.world.level.levelgen.DensityFunction)',
@@ -105,6 +112,13 @@ def oracle_symbols(classes):
         'Property': {'Property.name':'java.lang.String getName()', 'Property.parse':'java.util.Optional getValue(java.lang.String)'},
         'Noise': {'Noise.xo':'double xo', 'Noise.yo':'double yo', 'Noise.zo':'double zo',
             'Noise.value':'double noise(double,double,double)', 'Noise.step':'double noise(double,double,double,double,double)'},
+        'Simplex': {'Simplex.xo':'double xo','Simplex.yo':'double yo','Simplex.zo':'double zo',
+            'Simplex.value':'double getValue(double,double)'},
+        'End': {'End.noise':'net.minecraft.world.level.levelgen.synth.SimplexNoise islandNoise',
+            'End.height':'float getHeightValue(net.minecraft.world.level.levelgen.synth.SimplexNoise,int,int)'},
+        'Holder': {'Holder.direct':'net.minecraft.core.Holder direct(java.lang.Object)'},
+        'Cubic': {'Cubic.constant':'net.minecraft.util.CubicSpline constant(float)'},
+        'Multipoint': {'Multipoint.create':'net.minecraft.util.CubicSpline$Multipoint create(net.minecraft.util.ToFloatFunction,float[],java.util.List,float[])'},
     }
     for alias, members in methods.items():
         for key, signature in members.items():
@@ -163,6 +177,19 @@ def noise_cases():
     seeds += [generator.getrandbits(64) for _ in range(10)]
     return [f'noise {variant} {seed:016x} 256' for seed in seeds for variant in
             ('legacy','xoroshiro','worldgen-legacy','worldgen-xoroshiro')]
+
+
+def simplex_cases():
+    result=[line.replace('noise ','simplex ',1).rsplit(' ',1)[0]+' 512' for line in noise_cases()]
+    for seed in (0,1,0xffffffffffffffff,0x8000000000000000,0x7fffffffffffffff,0x123456789abcdef0):
+        result.append(f'end {seed:016x} 768')
+    return result
+
+
+def float_cases():
+    generator=random.Random(0x1211_49454545)
+    seeds=[0x1211,1,0xffffffff,0x80000000]+[generator.getrandbits(32) for _ in range(12)]
+    return [f'java-float {seed:08x} 4096' for seed in seeds]
 
 
 def factory_cases():
@@ -272,6 +299,48 @@ def density_cases():
     return result
 
 
+def spline_cases():
+    d64=lambda v:struct.pack('>d',float(v)).hex()
+    f32=lambda v:struct.unpack('>f',struct.pack('>f',v))[0]
+    bits32=lambda v:struct.pack('>f',v).hex()
+    result=[]
+    def node(op,a=0,fy=0,ty=0,p0=0,p1=0): return [op,a,0,0,fy,ty,p0,p1]
+    def encode(nodes,splines):
+        tokens=['density',str(len(nodes)),str(len(nodes)-1),'64']
+        for n in nodes: tokens += [str(v) for v in n[:6]]+[d64(v) for v in n[6:]]
+        tokens.append(str(len(splines)))
+        for points in splines:
+            tokens.append(str(len(points)))
+            for location,derivative,value in points: tokens += [bits32(location),bits32(derivative),str(value)]
+        result.append(' '.join(tokens))
+    coordinates=[-math.inf,-2,-1,-0.5,-0.0,0,0.5,1,2,math.inf,math.nan,
+                 1+2**-24,1+3*2**-24,-1-2**-24]
+    for locations in ([0],[-1,1],[-1,-0.0,0.5,1],[-1,0,0,1]):
+        for derivatives in (0,-2,2,1e30):
+            for coordinate in coordinates:
+                nodes=[node(14,fy=24,p0=coordinate,p1=coordinate)]
+                points=[]
+                for i,location in enumerate(locations):
+                    points.append((location,f32(derivatives*(1 if i%2==0 else -1)),len(nodes)))
+                    nodes.append(node(0,p0=f32([-0.0,0.25,-1.25,2.5][i%4])))
+                nodes.append(node(35,a=0,fy=0));encode(nodes,[points])
+    generator=random.Random(0x1211_53504c494e45)
+    for _ in range(192):
+        nodes=[node(14,fy=24,p0=-2,p1=2),node(1,fy=-64,ty=320,p0=-3,p1=3)]
+        splines=[];values=[]
+        for _ in range(generator.randrange(2,8)):
+            points=[]
+            for location in (-2,-0.5,0,0.5,2):
+                if values and generator.randrange(3)==0: child=generator.choice(values)
+                else:
+                    child=len(nodes);nodes.append(node(0,p0=f32(generator.uniform(-4,4))))
+                points.append((location,f32(generator.choice([0,-0.0,generator.uniform(-3,3)])),child))
+            coordinate=generator.randrange(2);values.append(len(nodes))
+            nodes.append(node(35,a=coordinate,fy=len(splines)));splines.append(points)
+        encode(nodes,splines)
+    return result
+
+
 def density_data_cases(reference,manifest):
     from compile_density_graph import compile_inventory,ROUTER_FIELDS
     report=compile_inventory(reference)
@@ -290,7 +359,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
-    parser.add_argument('--suite',choices=['core','noise','factories','octaves','blended','density','density-data'],default='core')
+    parser.add_argument('--suite',choices=['core','noise','simplex','java-float','factories','octaves','blended','density','density-spline','density-data'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -298,8 +367,9 @@ def main():
         configuration=oracle_symbols(classes)
         properties=output/'symbols.properties'
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
-        generators={'core':cases,'noise':noise_cases,'factories':factory_cases,'octaves':lambda:octave_cases(path,manifest),
-                    'blended':lambda:blended_cases(path,manifest),'density':density_cases,'density-data':lambda:density_data_cases(path,manifest)}
+        generators={'core':cases,'noise':noise_cases,'simplex':simplex_cases,'java-float':float_cases,'factories':factory_cases,'octaves':lambda:octave_cases(path,manifest),
+                    'blended':lambda:blended_cases(path,manifest),'density':density_cases,'density-spline':spline_cases,
+                    'density-data':lambda:density_data_cases(path,manifest)}
         inputs=args.cases.read_text().splitlines() if args.cases else generators[args.suite]()
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
@@ -331,6 +401,15 @@ def main():
             report['scope']=['block-state property transitions via original StateHolder.setValue']
         elif args.suite=='noise':
             report['scope']=['ImprovedNoise construction/random consumption and noise3/noise5 binary64 results']
+        elif args.suite=='simplex':
+            report['scope']=['SimplexNoise construction, offsets, parent consumption and 2D binary64 samples including ties',
+                             'EndIslandDensityFunction heights/density at central, outer and overflow coordinates; six world seeds',
+                             'Simplex 3D and complete End chunks are not yet covered']
+        elif args.suite=='java-float':
+            report['reference_kind']='authored Java 21 expressions; this suite does not invoke Minecraft methods'
+            report['scope']=['authored Java 21 strict binary32 arithmetic against the portable native compatibility layer',
+                             'add/sub/mul/div/remainder, min/max/comparison, sqrt via double, double/int conversions; bit patterns include subnormal, overflow, signed zero, NaN and infinity',
+                             'EE code generation is audited separately; runtime output and performance still need hardware measurement']
         elif args.suite=='factories':
             report['scope']=['positional factories, fromSeed, Java UTF-16 hash, UTF-8 MD5 seeds, fork consumption and wrapper count']
         elif args.suite=='octaves':
@@ -343,10 +422,15 @@ def main():
             report['scope']=['DensityFunctions arithmetic/gradient/map/clamp/range-choice construction and declared bounds',
                              'binary64 finite values, signed zeros, NaN semantics and lazy leaf evaluation order',
                              'synthetic graphs; chunk interpolation and complete vanilla router evaluation not yet covered']
+        elif args.suite=='density-spline':
+            report['scope']=['original CubicSpline factories and DensityFunctions.Spline compute/bounds',
+                             'binary32 Hermite/extrapolation, nested values, zero derivatives, signed zero, NaN and lazy coordinate order',
+                             'synthetic graphs plus separate vanilla router coverage; NoiseChunk wrappers remain pending']
         elif args.suite=='density-data':
             report['scope']=['verified vanilla JSON -> private MCDG -> native point graphs compared independently with original RandomState routers',
                              'seeded noise binding including Legacy climate/offset exceptions, named references and point markers',
-                             'supported router fields only; NoiseChunk interpolation, splines, end islands and full chunk generation not yet covered']
+                             'all 105 vanilla router fields, including splines, weird_scaled_sampler and end_islands',
+                             'NoiseChunk interpolation, aquifers and full chunk generation not yet covered']
             inventory=json.loads((PRIVATE/'density-data/inventory.json').read_text())
             report['graph_counts']=inventory['counts']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')

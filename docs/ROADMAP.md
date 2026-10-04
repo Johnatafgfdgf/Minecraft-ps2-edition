@@ -6,9 +6,10 @@ Etapas concluídas no host: PRNGs/seeds/coordenadas/storage/fila por chunk;
 representação de todos os block states com transições; factories de posição e
 strings; ImprovedNoise/PerlinNoise/NormalNoise/BlendedNoise exatos nos casos comparativos.
 Aritmética, gradientes, limites e seleção de ramos do grafo de densidade conferidos
-em grafos sintéticos; 93 campos de routers vanilla e sua ligação de seeds
-conferidos no domínio de pontos. Doze campos spline/End e wrappers de chunks
-ainda pendentes.
+em grafos sintéticos; todos os 105 campos de routers vanilla, splines e ilhas do
+End conferidos no domínio de pontos. A camada binary32 usa arredondamento e
+comparações explícitos por bits; o build EE audita seu caminho numérico.
+Wrappers de NoiseChunk e geração de chunks completos ainda estão pendentes.
 A plataforma compila para EE e ainda
 precisa de boot em equipamento. Dados exportados não substituem gameplay.
 
@@ -18,9 +19,10 @@ precisa de boot em equipamento. Dados exportados não substituem gameplay.
    análise própria. Validar a pipeline de assets com um cliente legítimo fornecido.
 2. Completar paletas, seções, cache/streaming, arenas e save codec. Testar eviction
    sem perda de estado, scheduled ticks, fluid ticks e block entities.
-3. Completar gaussian, demais noises e núcleo numérico exato. As factories e
-   string seeds já foram portadas; integrar density functions e comparar seeds/coordenadas antes de
-   integrar biome source, carvers, surface rules, features e estruturas.
+3. Portar e testar wrappers/interpolação de NoiseChunk e aquifers usando os
+   grafos já ligados à seed. Completar gaussian, demais noises e núcleo numérico
+   necessário; integrar biome source, carvers, surface rules, features e
+   estruturas, comparando chunks com o original em cada fase.
 4. Integrar world runtime, coordenador global de ticks, block updates e random
    ticks. Usar fixtures observadas no original para redstone (incluindo ordem e
    quasi-connectivity), fluidos, iluminação e alterações de estado.

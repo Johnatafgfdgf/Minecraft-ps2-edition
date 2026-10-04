@@ -6,12 +6,16 @@
 #include "mcps2/octave_noise.hpp"
 #include "mcps2/blended_noise.hpp"
 #include "mcps2/density_graph.hpp"
+#include "mcps2/simplex_noise.hpp"
+#include "mcps2/java_float.hpp"
+#include "mcps2/java_math.hpp"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <vector>
 #include <string>
 #include <cstring>
+#include <algorithm>
 
 namespace {
 unsigned case_index = 0;
@@ -67,6 +71,26 @@ template<class R> void worldgen(uint64_t seed, int32_t x, int32_t z, int32_t ind
 }
 uint64_t double_bits(double value) { uint64_t bits; std::memcpy(&bits,&value,sizeof(bits)); return bits; }
 double from_double_bits(const std::string& token) { const uint64_t bits=parse_hex(token); double value; std::memcpy(&value,&bits,sizeof(value)); return value; }
+float from_float_bits(const std::string& token) { const uint32_t bits=uint32_t(parse_hex(token)); float value; std::memcpy(&value,&bits,sizeof(value)); return value; }
+uint32_t float_bits(float value) { uint32_t bits; std::memcpy(&bits,&value,sizeof(bits)); return value!=value?0x7fc00000u:bits; }
+float float_from_bits(uint32_t bits) { float value;std::memcpy(&value,&bits,sizeof(value));return value; }
+void java_float_cases(uint32_t seed,unsigned samples) {
+    const uint32_t edges[]={0,0x80000000u,1,0x80000001u,0x007fffffu,0x00800000u,0x3f000000u,0x3f800000u,
+        0x3f800001u,0x40000000u,0x7f7fffffu,0xff7fffffu,0x7f800000u,0xff800000u,0x7fc00000u,0x7fa00001u};
+    auto next=[&seed]() { seed^=seed<<13;seed^=seed>>17;seed^=seed<<5;return seed; };
+    for (unsigned i=0;i<samples;++i) {
+        const float a=float_from_bits(i<256?edges[i/16]:next()),b=float_from_bits(i<256?edges[i%16]:next());
+        const uint64_t hi=next(),lo=next(),raw=hi<<32|lo;double d;std::memcpy(&d,&raw,sizeof(d));
+        const int32_t integer=mcps2::signed32(next());
+        const float values[]={mcps2::java_float::add(a,b),mcps2::java_float::subtract(a,b),mcps2::java_float::multiply(a,b),
+            mcps2::java_float::divide(a,b),mcps2::java_float::remainder(a,b),mcps2::java_float::square_root(a),
+            mcps2::java_float::round(d),mcps2::java_float::round(double(integer)),mcps2::java_minimum(a,b),mcps2::java_maximum(a,b)};
+        std::string record="java-float "+std::to_string(i);
+        for (float value:values) record+=" "+hex(float_bits(value),8);
+        record+=" "+std::to_string(mcps2::java_float::equal(a,b))+" "+std::to_string(mcps2::java_float::less(a,b))+" "+std::to_string(mcps2::java_float::less_equal(a,b));
+        emit(record);
+    }
+}
 uint64_t density_bits(double value) { return value != value ? 0x7ff8000000000000ULL : double_bits(value); }
 struct DensityProbe { uint64_t* trace; unsigned id; int32_t threshold; double low,high; };
 double density_probe(const void* state,mcps2::DensityContext context) noexcept {
@@ -79,12 +103,29 @@ void density() {
     unsigned count,root,samples;std::cin>>count>>root>>samples;
     std::vector<DensityNode> nodes(count);std::vector<DensityInput> inputs(count);
     std::vector<DensityProbe> probes(count);uint64_t trace=0;
-    // Bindings are installed before their corresponding node is appended; the arena never moves.
-    DensityGraph graph(nodes.data(),count,inputs.data(),count);
-    for (unsigned i=0;i<count;++i) {
-        unsigned op;DensitySpec s;std::string p0,p1;
+    std::vector<DensitySpec> specs(count);unsigned spline_count=0;
+    for (auto& s:specs) {
+        unsigned op;std::string p0,p1;
         std::cin>>op>>s.a>>s.b>>s.c>>s.from_y>>s.to_y>>p0>>p1;
         s.op=DensityOp(op);s.p0=from_double_bits(p0);s.p1=from_double_bits(p1);
+        if (s.op==DensityOp::spline) spline_count=std::max(spline_count,unsigned(s.from_y)+1);
+    }
+    std::vector<std::vector<DensitySplinePoint>> points(spline_count);std::vector<DensitySpline> splines(spline_count);
+    if (spline_count) {
+        unsigned encoded;std::cin>>encoded;if (encoded!=spline_count) std::abort();
+        for (unsigned i=0;i<spline_count;++i) {
+            unsigned size;std::cin>>size;points[i].resize(size);
+            for (auto& p:points[i]) {
+                std::string location,derivative;std::cin>>location>>derivative>>p.value;
+                p.location=from_float_bits(location);p.derivative=from_float_bits(derivative);
+            }
+            splines[i]={points[i].data(),points[i].size()};
+        }
+    }
+    // Bindings are installed before their corresponding node is appended; the arena never moves.
+    DensityGraph graph(nodes.data(),count,inputs.data(),count,nullptr,0,splines.data(),splines.size());
+    for (unsigned i=0;i<count;++i) {
+        DensitySpec s=specs[i];
         if (s.op==DensityOp::input) {
             probes[i]={&trace,i,s.from_y,s.p0,s.p1};inputs[i]={&probes[i],density_probe,s.p0,s.p1};s.a=i;
         }
@@ -101,6 +142,28 @@ void density() {
         double value;trace=0;
         if (graph.sample(root,context,frames.data(),frames.size(),value)!=DensityResult::ok) std::abort();
         emit("density "+std::to_string(i)+" "+hex(density_bits(value))+" "+hex(trace));
+    }
+}
+template<class R> void simplex(uint64_t seed,unsigned samples) {
+    R source(seed);mcps2::SimplexNoise field;field.initialize(source);
+    emit("simplex-offsets "+hex(double_bits(field.offset(0)))+" "+hex(double_bits(field.offset(1)))+" "+hex(double_bits(field.offset(2))));
+    emit("simplex-parent "+hex(source.next_long()));
+    if constexpr (!std::is_same_v<R,mcps2::LegacyRandom> && !std::is_same_v<R,mcps2::XoroshiroRandom>)
+        emit("simplex-count "+std::to_string(source.count()));
+    const double edges[]={-2147483648.25,-33554432,-256,-1,-0.5,-0.0,0,0.5,1,256,33554432,2147483648.25};
+    for (unsigned i=0;i<samples;++i) {
+        const double x=i<12?edges[i]:i<40?(double(i)-32)/16:mcps2::signed32(i*0x9e3779b9u+0x11221122u)/64.0;
+        const double y=i<12?edges[11-i]:i<40?0:mcps2::signed32(i*0x7f4a7c15u+0x13579bdfu)/128.0;
+        emit("simplex2 "+std::to_string(i)+" "+hex(density_bits(field.sample(x,y)))+" "+hex(density_bits(field.sample(x,x))));
+    }
+}
+void end_islands(uint64_t seed,unsigned samples) {
+    mcps2::EndIslandDensity field;field.initialize(seed);
+    emit("end-bounds "+hex(double_bits(field.minimum))+" "+hex(double_bits(field.maximum)));
+    for (unsigned i=0;i<samples;++i) {
+        const int32_t x=i<256?(int32_t(i)-128)*8+int32_t(i%8):mcps2::signed32(i*0x9e3779b9u+0x11221122u)%(i<512?32769:30000001);
+        const int32_t z=i<256?(int32_t((i*97)%257)-128)*8-int32_t(i%8):mcps2::signed32(i*0x7f4a7c15u+0x13579bdfu)%(i<512?32769:30000001);
+        emit("end "+std::to_string(i)+" "+hex(float_bits(field.height(x,z)),8)+" "+hex(density_bits(field.sample(x,z))));
     }
 }
 template<class R> void blended(uint64_t seed,unsigned samples,const mcps2::BlendedNoiseParameters& parameters) {
@@ -217,6 +280,17 @@ int main() {
             else if (variant == "worldgen-legacy") rng<WorldgenRandom<LegacyRandom>>(value, count);
             else if (variant == "worldgen-xoroshiro") rng<WorldgenRandom<XoroshiroRandom>>(value, count);
             else return 2;
+        } else if (command=="java-float") {
+            std::string seed;unsigned count;std::cin>>seed>>count;java_float_cases(uint32_t(parse_hex(seed)),count);
+        } else if (command=="simplex") {
+            std::string variant,seed;unsigned count;std::cin>>variant>>seed>>count;
+            if (variant=="legacy") simplex<LegacyRandom>(parse_hex(seed),count);
+            else if (variant=="xoroshiro") simplex<XoroshiroRandom>(parse_hex(seed),count);
+            else if (variant=="worldgen-legacy") simplex<WorldgenRandom<LegacyRandom>>(parse_hex(seed),count);
+            else if (variant=="worldgen-xoroshiro") simplex<WorldgenRandom<XoroshiroRandom>>(parse_hex(seed),count);
+            else return 2;
+        } else if (command=="end") {
+            std::string seed;unsigned count;std::cin>>seed>>count;end_islands(parse_hex(seed),count);
         } else if (command=="density") {
             density();
         } else if (command=="blended") {

@@ -34,6 +34,19 @@ double DensityPack::real(size_t offset) const noexcept {
     for (unsigned i = 0; i < 8; ++i) bits |= uint64_t(bytes_[offset + i]) << (8 * i);
     double value; std::memcpy(&value, &bits, sizeof(value)); return value;
 }
+float DensityPack::single(size_t offset) const noexcept {
+    const uint32_t bits=u32(offset);float value;std::memcpy(&value,&bits,sizeof(value));return value;
+}
+bool DensityPack::spline(uint32_t index,DensitySplineView& result) const noexcept {
+    if (!bytes_ || index>=splines_) return false;
+    const size_t offset=spline_offset_+size_t(index)*16;
+    result={u32(offset),u32(offset+4),u32(offset+8)};return true;
+}
+bool DensityPack::point(uint32_t index,DensitySplinePoint& result) const noexcept {
+    if (!bytes_ || index>=points_) return false;
+    const size_t offset=point_offset_+size_t(index)*16;
+    result={single(offset),single(offset+4),u32(offset+8)};return true;
+}
 bool DensityPack::spec(uint32_t index, DensitySpec& result) const noexcept {
     if (!bytes_ || index >= nodes_) return false;
     const size_t offset = node_offset_ + size_t(index) * 40;
@@ -57,23 +70,30 @@ bool DensityPack::amplitude(uint32_t resource_index, uint32_t index, double& res
 }
 bool DensityPack::bind(const void* data, size_t size) noexcept {
     bytes_ = nullptr; nodes_ = resources_ = root_ = node_offset_ = resource_offset_ = 0; legacy_ = false;
-    if (!data || size < 40 || size > std::numeric_limits<uint32_t>::max() || std::memcmp(data,"MCDG",4) != 0) return false;
+    splines_=points_=spline_offset_=point_offset_=0;
+    if (!data || size < 56 || size > std::numeric_limits<uint32_t>::max() || std::memcmp(data,"MCDG",4) != 0) return false;
     bytes_ = static_cast<const uint8_t*>(data);
-    auto reject = [this]() noexcept { bytes_ = nullptr; nodes_ = resources_ = 0; return false; };
-    if (u32(4) != 1 || (u32(8) != 2 && u32(8) != 3) || u32(32) != size || crc32(bytes_ + 40, size - 40) != u32(36)) return reject();
+    auto reject = [this]() noexcept { bytes_ = nullptr; nodes_ = resources_ = splines_ = points_ = 0; return false; };
+    if (u32(4) != 2 || (u32(8) != 2 && u32(8) != 3) || u32(32) != size || crc32(bytes_ + 56, size - 56) != u32(36)) return reject();
     nodes_ = u32(12); root_ = u32(16); resources_ = u32(20); node_offset_ = u32(24); resource_offset_ = u32(28); legacy_ = u32(8) == 3;
-    if (!nodes_ || root_ >= nodes_ || node_offset_ != 40 || nodes_ > (size - 40) / 40) return reject();
-    const size_t node_end = 40 + size_t(nodes_) * 40;
+    splines_=u32(40);points_=u32(44);spline_offset_=u32(48);point_offset_=u32(52);
+    if (!nodes_ || root_ >= nodes_ || node_offset_ != 56 || nodes_ > (size - 56) / 40) return reject();
+    const size_t node_end = 56 + size_t(nodes_) * 40;
     if (resource_offset_ != node_end || resources_ > (size - node_end) / 64) return reject();
-    const size_t table_end = node_end + size_t(resources_) * 64;
+    const size_t resource_end = node_end + size_t(resources_) * 64;
+    if (spline_offset_!=resource_end || splines_>(size-resource_end)/16) return reject();
+    const size_t spline_end=resource_end+size_t(splines_)*16;
+    if (point_offset_!=spline_end || points_>(size-spline_end)/16) return reject();
+    const size_t table_end = spline_end+size_t(points_)*16;
     auto span = [size,table_end](uint32_t offset, uint32_t count, unsigned width) noexcept {
         return offset >= table_end && offset <= size && count <= (size - offset) / width;
     };
     for (uint32_t i = 0; i < resources_; ++i) {
         const size_t offset = resource_offset_ + size_t(i) * 64;
-        if (u32(offset) > 1 || !span(u32(offset + 4),u32(offset + 8),1) || !span(u32(offset + 16),u32(offset + 20),8)) return reject();
+        if (u32(offset) > 2 || !span(u32(offset + 4),u32(offset + 8),1) || !span(u32(offset + 16),u32(offset + 20),8)) return reject();
         DensityResourceView r; resource(i,r);
         if (!resource_name(r.name)) return reject();
+        if (r.kind==2 && r.amplitude_count) return reject();
         if (r.kind == 1) {
             if (r.amplitude_count || r.blended.xz_scale < 0.001 || r.blended.xz_scale > 1000
                 || r.blended.y_scale < 0.001 || r.blended.y_scale > 1000 || r.blended.xz_factor < 0.001 || r.blended.xz_factor > 1000
@@ -84,18 +104,36 @@ bool DensityPack::bind(const void* data, size_t size) noexcept {
             double value; amplitude(i,n,value); if (!std::isfinite(value)) return reject();
         }
     }
+    for (uint32_t i=0;i<points_;++i) {
+        DensitySplinePoint p;point(i,p);
+        if (p.value>=nodes_ || !std::isfinite(double(p.location)) || !std::isfinite(double(p.derivative)) || u32(point_offset_+size_t(i)*16+12)) return reject();
+    }
+    for (uint32_t i=0;i<splines_;++i) {
+        DensitySplineView s;spline(i,s);
+        if (!s.point_count || s.coordinate>=nodes_ || s.first_point>points_ || s.point_count>points_-s.first_point
+            || u32(spline_offset_+size_t(i)*16+12)) return reject();
+    }
     for (uint32_t i = 0; i < nodes_; ++i) {
         DensitySpec s; spec(i,s); const unsigned op = unsigned(s.op);
         const size_t offset = node_offset_ + size_t(i) * 40;
-        if (bytes_[offset + 1] || bytes_[offset + 2] || bytes_[offset + 3] || op > 32 || (op >= 14 && op <= 16)
+        if (bytes_[offset + 1] || bytes_[offset + 2] || bytes_[offset + 3] || op > 35 || (op >= 14 && op <= 16)
             || !std::isfinite(s.p0) || !std::isfinite(s.p1)) return reject();
-        unsigned arity = op >= 2 && op <= 5 ? 2 : op == 7 || op == 21 ? 3 : op == 6 || (op >= 8 && op <= 13) || (op >= 23 && op <= 27) || op == 30 || op == 31 ? 1 : 0;
+        unsigned arity = op >= 2 && op <= 5 ? 2 : op == 7 || op == 21 ? 3 : op == 6 || (op >= 8 && op <= 13) || (op >= 23 && op <= 27) || op == 30 || op == 31 || op == 33 || op == 35 ? 1 : 0;
         const uint32_t references[] = {s.a,s.b,s.c};
         for (unsigned j = 0; j < arity; ++j) if (references[j] >= i) return reject();
-        if (op >= 17 && op <= 22) {
+        if (op==33 && s.to_y!=0 && s.to_y!=1) return reject();
+        if ((op >= 17 && op <= 22) || op==33 || op==34) {
             if (s.from_y < 0 || uint32_t(s.from_y) >= resources_) return reject();
             DensityResourceView r; resource(uint32_t(s.from_y),r);
-            if (r.kind != (op == 22 ? 1u : 0u)) return reject();
+            if (r.kind != (op == 22 ? 1u : op==34 ? 2u : 0u)) return reject();
+        }
+        if (op==35) {
+            if (s.from_y<0 || uint32_t(s.from_y)>=splines_) return reject();
+            DensitySplineView view;spline(uint32_t(s.from_y),view);
+            if (s.a!=view.coordinate) return reject();
+            for (uint32_t j=0;j<view.point_count;++j) {
+                DensitySplinePoint p;point(view.first_point+j,p);if (p.value>=i) return reject();
+            }
         }
     }
     return true;

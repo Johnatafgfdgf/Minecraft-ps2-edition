@@ -20,9 +20,9 @@ comportamento; não contém código da Mojang.
 | `RangeChoice` | Entrada, intervalo, dois ramos | Testa `valor >= minInclusive && valor < maxExclusive`; avalia somente o ramo escolhido |
 
 O caminho estudado é `DensityFunction.compute(FunctionContext)` e as factories
-usadas para construir seu grafo. `fillArray`, o visitor de ligação de ruídos e os
-wrappers de `NoiseChunk` precisam ser analisados separadamente antes de serem
-usados na geração de chunks.
+usadas para construir seu grafo. O visitor de ligação de ruídos foi analisado na
+etapa descrita abaixo. `fillArray` e os wrappers de `NoiseChunk` ainda precisam
+ser portados antes de usar o grafo na geração de chunks.
 
 ## Regras numéricas e de avaliação
 
@@ -63,7 +63,7 @@ Resultados finitos e zeros são comparados por bits. NaN é normalizado apenas n
 protocolo de observação, pois seu payload não define uma regra de geração.
 
 Isso estabelece operações do grafo. Ainda não estabelece paridade de chunks,
-biomas, splines, aquifers, carvers, superfície, features ou estruturas.
+biomas, aquifers, carvers, superfície, features ou estruturas.
 
 `make density-parity` verifica 1.857 grafos e 110.826 observações coincidentes.
 Cada nó ocupa no máximo 64 bytes; cada frame de avaliação, 24 bytes. A arena e as
@@ -108,23 +108,75 @@ faltou. Não gerar uma substituição zero para uma função desconhecida.
 
 ## Pipeline implementada
 
-`tools/compile_density_graph.py --inventory` gera **MCDG v1** little-endian com
-header de 40 bytes, nós de 40 bytes no disco, descritores de ruídos de 64 bytes,
-nomes e amplitudes em pools. CRC-32 cobre o payload. O leitor `DensityPack`
+`tools/compile_density_graph.py --inventory` gera **MCDG v2** little-endian com
+header de 56 bytes, nós de 40 bytes no disco, descritores de ruídos de 64 bytes,
+descritores de spline e pontos de 16 bytes cada, nomes e amplitudes em pools.
+Locations/derivatives são binary32; IDs de coordenadas e valores preservam as
+dependências. CRC-32 cobre o payload. O leitor `DensityPack`
 valida versão/domínio, CRC, tamanho, offsets, referências anteriores, tipos de
 recursos e números antes de expor views. O runtime recebe pools separados para
 os objetos de ruído, octaves, nós e frames; não precisa de JSON no EE.
 
-Foram convertidos **93 dos 105 campos** dos sete noise settings vanilla. Somam
-411 nós e 28.144 bytes de packs; isso não inclui os pools de ruído construídos
-por seed. O inventário nomeia os 12 campos pendentes: depth, initial density e
-final density dos três Overworld settings dependem de spline; três campos do
-End dependem de end_islands. O compilador não emite grafos incompletos para eles.
+Foram convertidos **todos os 105 campos** dos sete noise settings vanilla. Somam
+4.753 nós, 819 splines, 3.210 pontos e 280.752 bytes nos packs independentes.
+Esses totais somam os arquivos de todas as configurações e não são um orçamento
+de RAM simultânea; também não incluem os pools de ruído construídos por seed.
+MCDG v2 substitui o formato privado v1: regenere os packs com o conversor.
+O compilador continua rejeitando funções futuras desconhecidas explicitamente.
 
-`make density-data-parity` lê esses packs pelo leitor nativo e compara **558
-cenários / 143.406 observações** com `RandomState.create` e `router` no próprio
+`make density-data-parity` lê esses packs pelo leitor nativo e compara **630
+cenários / 161.910 observações** com `RandomState.create` e `router` no próprio
 JAR, usando seis seeds. A referência não lê o MCDG nem reconstrói o resultado a
 partir do conversor; usa seus próprios registries e factories. Cobre os campos
-compilados, inclusive densidade final de Nether/caves/floating_islands, ainda
+compilados, inclusive densidade final de Overworld/Nether/End e dos demais settings, ainda
 no domínio de pontos anterior aos wrappers de NoiseChunk. Não comprova o layout
 dos blocos de um chunk nem o comportamento das etapas posteriores da geração.
+
+## Spline, End e rareza — implementação e análise
+
+`Spline` chama CubicSpline com um contexto que referencia o ponto original. Suas
+coordenadas convertem o resultado da DensityFunction para **float**. Locations,
+derivatives, valores, interpolação Hermite e limites de CubicSpline também usam
+binary32; só o resultado final da DensityFunction é promovido para double.
+Cada posição escolhe o segmento por busca binária. Fora da faixa, avalia somente
+um extremo e extrapola por sua derivada; derivada zero retorna o valor sem fazer
+`0 * infinito`. Dentro da faixa, avalia os dois valores do segmento em ordem.
+Os limites incluem extrapolação nos limites da coordenada, os limites dos valores
+filhos e a margem derivada das tangentes em cada segmento. Os JSON de spline
+precisam ser convertidos para pools de pontos e referências, preservando floats.
+
+O runtime implementa esses pools e mantém sua avaliação na mesma pilha externa
+do grafo. `make density-spline-parity` compara 416 grafos sintéticos e 32.073
+observações, incluindo limites, valores por bits e sequência de folhas chamadas.
+Exercita um ponto, knots repetidos aceitos pela factory, extrapolação, derivadas
+zero/extremas, arredondamento, zeros com sinal, NaN/inf nas coordenadas e valores
+aninhados. Um teste de recurso avalia 1.025 splines aninhadas sem recursão e
+rejeita referências futuras/workspace insuficiente antes de modificar a saída.
+
+EndIslandDensityFunction usa LegacyRandomSource com a world seed, consome 17.292
+ints e constrói SimplexNoise. O sampling usa divisão inteira por 8 com truncamento
+Java, seguido de height sampling com restos da divisão por 2. A busca de ilhas
+examina uma vizinhança de 25×25 posições e testa Simplex 2D contra -0.9f promovido
+para double. A distância inicial preserva overflow de multiplicação/soma em
+32 bits; a verificação de candidatos usa long. Cálculos de alturas e escala usam
+float, incluindo remainder e sqrt via Math.sqrt(double) promovido de float.
+Esse overflow pode produzir NaN em grandes coordenadas; não corrigir essa regra
+na implementação nativa. O resultado promove a altura, subtrai 8 e divide por 128.
+
+`make simplex-parity` compara 70 cenários e 37.542 observações: construção de
+Simplex em quatro variantes de PRNG, consumo do parent, offsets, 2D com empates
+e limites de piso, mais heights/density do End em seis world seeds. As posições
+incluem a ilha central, ilhas externas, negativos, restos não nulos e overflow.
+Simplex 3D permanece pendente; os chunks do End também exigem as etapas posteriores.
+
+Splines e alturas do End usam a camada `java_float`, com arredondamento explícito
+para binary32 a cada operação e comparações por bits. O build EE audita esses
+objetos para impedir operações single-precision de cálculo/comparação nesse
+caminho. Isso conserva as regras verificadas no host sem depender de opções de
+FPU de um emulador. O tempo de CPU e a suíte em hardware continuam pendentes.
+
+WeirdScaledSampler seleciona uma rareza discretizada a partir do filho, divide
+X/Y/Z por ela, amostra o NormalNoise e devolve rareza × abs(noise). type_1 usa
+limites -0.5/0/0.5 e rarezas 0.75/1/1.5/2. type_2 usa -0.75/-0.5/0.5/0.75 e
+rarezas 0.5/0.75/1/2/3. Cada comparação é estrita; os limites declarados são zero
+e a rareza máxima multiplicada pelo maxValue do ruído.

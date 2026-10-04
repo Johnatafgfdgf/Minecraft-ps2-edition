@@ -50,6 +50,7 @@ jobs:
       - name: Build native ELF and package notices
         run: |
           make ps2
+          python3 tools/check_ee_float.py
           mips64r5900el-ps2-elf-size build/ps2/MinecraftPS2.elf
           mkdir -p dist
           cp build/ps2/MinecraftPS2.elf build/ps2/MinecraftPS2.map dist/
@@ -81,10 +82,13 @@ jobs:
           make reference-data
           make registry-parity
           make noise-parity
+          make simplex-parity
+          make float-parity
           make factory-parity
           make octave-parity
           make blended-parity
           make density-parity
+          make density-spline-parity
           make density-data-parity
           make check-public
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -95,10 +99,13 @@ jobs:
             .local/parity/report.json
             .local/registry-parity/report.json
             .local/noise-parity/report.json
+            .local/simplex-parity/report.json
+            .local/float-parity/report.json
             .local/factory-parity/report.json
             .local/octave-parity/report.json
             .local/blended-parity/report.json
             .local/density-parity/report.json
+            .local/density-spline-parity/report.json
             .local/density-data-parity/report.json
           include-hidden-files: true
           if-no-files-found: error

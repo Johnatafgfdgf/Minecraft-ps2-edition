@@ -1,6 +1,9 @@
 #include "mcps2/density_graph.hpp"
 #include "mcps2/octave_noise.hpp"
 #include "mcps2/blended_noise.hpp"
+#include "mcps2/simplex_noise.hpp"
+#include "mcps2/density_spline.hpp"
+#include "mcps2/java_float.hpp"
 #include <cmath>
 #include <limits>
 
@@ -38,11 +41,11 @@ bool forwards(DensityOp op) noexcept {
     return (op >= DensityOp::interpolated && op <= DensityOp::cache_all_in_cell)
         || op == DensityOp::blend_density || op == DensityOp::reference;
 }
-bool normal_noise(DensityOp op) noexcept { return op >= DensityOp::noise && op <= DensityOp::shifted_noise; }
+bool normal_noise(DensityOp op) noexcept { return (op >= DensityOp::noise && op <= DensityOp::shifted_noise) || op == DensityOp::weird_scaled_sampler; }
 unsigned children(DensityOp op) noexcept {
     if (op >= DensityOp::add && op <= DensityOp::maximum) return 2;
     if (op == DensityOp::range_choice || op == DensityOp::shifted_noise) return 3;
-    return op == DensityOp::clamp || is_map(op) || forwards(op) ? 1 : 0;
+    return op == DensityOp::clamp || is_map(op) || forwards(op) || op == DensityOp::weird_scaled_sampler || op == DensityOp::spline ? 1 : 0;
 }
 double gradient(const DensitySpec& s, int32_t y) noexcept {
     const double amount = (double(y) - double(s.from_y)) / (double(s.to_y) - double(s.from_y));
@@ -53,14 +56,15 @@ double gradient(const DensitySpec& s, int32_t y) noexcept {
 }
 
 DensityGraph::DensityGraph(DensityNode* nodes, size_t capacity, const DensityInput* inputs, size_t input_count,
-                           const DensityNoiseBinding* noises, size_t noise_count) noexcept
+                           const DensityNoiseBinding* noises, size_t noise_count, const DensitySpline* splines, size_t spline_count) noexcept
     : nodes_(nodes), capacity_(nodes ? capacity : 0), inputs_(inputs), input_count_(inputs ? input_count : 0),
-      noises_(noises), noise_count_(noises ? noise_count : 0) {}
+      noises_(noises), noise_count_(noises ? noise_count : 0), splines_(splines), spline_count_(splines ? spline_count : 0) {}
 
 DensityResult DensityGraph::append(const DensitySpec& spec, DensityId& id) noexcept {
     if (count_ >= capacity_ || count_ >= std::numeric_limits<uint32_t>::max()) return DensityResult::full;
     // Specialized opcodes are created here after the original factory's bound calculation.
-    if (spec.op > DensityOp::beardifier_marker || spec.op == DensityOp::add_constant || spec.op == DensityOp::multiply_constant)
+    if (spec.op > DensityOp::spline || spec.op == DensityOp::add_constant || spec.op == DensityOp::multiply_constant
+        || (spec.op == DensityOp::weird_scaled_sampler && spec.to_y != 0 && spec.to_y != 1))
         return DensityResult::invalid_operation;
     const unsigned arity = children(spec.op);
     const DensityId references[] = {spec.a, spec.b, spec.c};
@@ -73,11 +77,22 @@ DensityResult DensityGraph::append(const DensitySpec& spec, DensityId& id) noexc
     }
     if (spec.op == DensityOp::input && (spec.a >= input_count_ || !inputs_[spec.a].sample))
         return DensityResult::invalid_reference;
-    if (normal_noise(spec.op) || spec.op == DensityOp::blended_noise) {
+    if (normal_noise(spec.op) || spec.op == DensityOp::blended_noise || spec.op == DensityOp::end_islands) {
         if (spec.from_y < 0 || size_t(spec.from_y) >= noise_count_) return DensityResult::invalid_reference;
         const auto& binding = noises_[spec.from_y];
-        if (normal_noise(spec.op) ? (!binding.normal || !binding.normal->ready()) : (!binding.blended || !binding.blended->ready()))
+        if (normal_noise(spec.op) ? (!binding.normal || !binding.normal->ready()) : spec.op == DensityOp::end_islands ? (!binding.end || !binding.end->ready()) : (!binding.blended || !binding.blended->ready()))
             return DensityResult::invalid_reference;
+    }
+    if (spec.op == DensityOp::spline) {
+        if (spec.from_y < 0 || size_t(spec.from_y) >= spline_count_) return DensityResult::invalid_reference;
+        const auto& spline = splines_[spec.from_y];
+        if (!spline.points || !spline.count) return DensityResult::invalid_reference;
+        for (size_t i = 0; i < spline.count; ++i) {
+            if (spline.points[i].value >= count_) return DensityResult::invalid_reference;
+            const uint32_t d = nodes_[spline.points[i].value].depth;
+            if (d == std::numeric_limits<uint32_t>::max()) return DensityResult::full;
+            if (d + 1 > depth) depth = d + 1;
+        }
     }
     DensityNode node{spec, 0, 0, depth};
     if (spec.op == DensityOp::constant) node.minimum = node.maximum = spec.p0;
@@ -88,9 +103,16 @@ DensityResult DensityGraph::append(const DensitySpec& spec, DensityId& id) noexc
     } else if (normal_noise(spec.op)) {
         node.maximum = noises_[spec.from_y].normal->max_value();
         if (spec.op >= DensityOp::shift && spec.op <= DensityOp::shift_b) node.maximum *= 4;
-        node.minimum = -node.maximum;
+        if (spec.op == DensityOp::weird_scaled_sampler) node.maximum = (spec.to_y == 0 ? 2.0 : 3.0) * node.maximum;
+        node.minimum = spec.op == DensityOp::weird_scaled_sampler ? 0 : -node.maximum;
     } else if (spec.op == DensityOp::blended_noise) {
         node.minimum = noises_[spec.from_y].blended->min_value(); node.maximum = noises_[spec.from_y].blended->max_value();
+    } else if (spec.op == DensityOp::end_islands) {
+        node.minimum = EndIslandDensity::minimum; node.maximum = EndIslandDensity::maximum;
+    } else if (spec.op == DensityOp::spline) {
+        float low,high;
+        spline_bounds(splines_[spec.from_y],nodes_,java_float::round(nodes_[spec.a].minimum),java_float::round(nodes_[spec.a].maximum),low,high);
+        node.minimum = double(low); node.maximum = double(high);
     } else if (spec.op == DensityOp::blend_alpha) {
         node.minimum = node.maximum = 1;
     } else if (spec.op == DensityOp::blend_offset || spec.op == DensityOp::beardifier_marker) {
@@ -158,7 +180,8 @@ DensityResult DensityGraph::sample(DensityId root, DensityContext context, Densi
             if (s.op == DensityOp::blend_alpha) { value = 1; --top; continue; }
             if (s.op == DensityOp::blend_offset || s.op == DensityOp::beardifier_marker) { value = 0; --top; continue; }
             if (s.op == DensityOp::blended_noise) { value = noises_[s.from_y].blended->sample(context.x, context.y, context.z); --top; continue; }
-            if (normal_noise(s.op) && s.op != DensityOp::shifted_noise) {
+            if (s.op == DensityOp::end_islands) { value = noises_[s.from_y].end->sample(context.x,context.z); --top; continue; }
+            if (normal_noise(s.op) && s.op != DensityOp::shifted_noise && s.op != DensityOp::weird_scaled_sampler) {
                 const auto& field = *noises_[s.from_y].normal;
                 if (s.op == DensityOp::noise) value = field.sample(double(context.x) * s.p0, double(context.y) * s.p1, double(context.z) * s.p0);
                 else if (s.op == DensityOp::shift_a) value = field.sample(double(context.x) * 0.25, 0, double(context.z) * 0.25) * 4;
@@ -168,6 +191,25 @@ DensityResult DensityGraph::sample(DensityId root, DensityContext context, Densi
             }
             frame.stage = 1; stack[top++] = {0, 0, s.a, 0}; continue;
         }
+        if (s.op == DensityOp::spline) {
+            const auto& spline = splines_[s.from_y];
+            if (frame.stage == 1) {
+                frame.first = double(java_float::round(value));
+                const size_t upper = spline_upper(spline,java_float::round(frame.first));
+                const size_t point = upper == 0 ? 0 : upper - 1;
+                frame.stage = 2; stack[top++] = {0,0,spline.points[point].value,0}; continue;
+            }
+            const size_t upper = spline_upper(spline,java_float::round(frame.first));
+            if (frame.stage == 2) {
+                if (upper == 0 || upper == spline.count) {
+                    value = double(spline_extrapolate(java_float::round(frame.first),spline.points[upper == 0 ? 0 : upper - 1],java_float::round(value)));
+                    --top; continue;
+                }
+                frame.second = double(java_float::round(value)); frame.stage = 3; stack[top++] = {0,0,spline.points[upper].value,0}; continue;
+            }
+            value = double(spline_segment(java_float::round(frame.first),spline.points[upper - 1],spline.points[upper],java_float::round(frame.second),java_float::round(value)));
+            --top; continue;
+        }
         if (s.op == DensityOp::shifted_noise) {
             if (frame.stage == 1) { frame.first = double(context.x) * s.p0 + value; frame.stage = 2; stack[top++] = {0, 0, s.b, 0}; continue; }
             if (frame.stage == 2) { frame.second = double(context.y) * s.p1 + value; frame.stage = 3; stack[top++] = {0, 0, s.c, 0}; continue; }
@@ -175,6 +217,12 @@ DensityResult DensityGraph::sample(DensityId root, DensityContext context, Densi
             --top; continue;
         }
         if (frame.stage == 1) {
+            if (s.op == DensityOp::weird_scaled_sampler) {
+                const double scale = s.to_y == 0 ? (value < -0.5 ? 0.75 : value < 0 ? 1.0 : value < 0.5 ? 1.5 : 2.0)
+                    : (value < -0.75 ? 0.5 : value < -0.5 ? 0.75 : value < 0.5 ? 1.0 : value < 0.75 ? 2.0 : 3.0);
+                value = scale * std::fabs(noises_[s.from_y].normal->sample(double(context.x) / scale,double(context.y) / scale,double(context.z) / scale));
+                --top; continue;
+            }
             if (forwards(s.op)) { --top; continue; } // SinglePointContext; chunk wrappers/blending are a separate runtime.
             if (is_map(s.op)) { value = mapped(s.op, value); --top; continue; }
             if (s.op == DensityOp::clamp) { value = clamp(value, s.p0, s.p1); --top; continue; }
