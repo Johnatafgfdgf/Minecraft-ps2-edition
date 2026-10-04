@@ -20,6 +20,7 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - ELF nativo com gsKit/GIF DMA, leitura de controle e ponte POSIX do PS2SDK.
 - Relógio de simulação separado dos frames, sem descartar dívida de ticks.
 - PRNGs Legacy/Xoroshiro, forks, reseeding e derivação de seeds de worldgen.
+- Kernel `ImprovedNoise`, incluindo consumo do PRNG e amostragem binary64 exata.
 - Coordenadas BlockPos/SectionPos/ChunkPos e layout SimpleBitStorage.
 - Fila de ticks pendentes por chunk, com identidade, deduplicação e prioridades.
 - Importação privada da referência oficial com verificação de hashes.
@@ -28,16 +29,20 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - Gerador privado de registries, world data pack e conversão de texturas pessoais.
 
 **Paridade no host:** 1.313 cenários, 75.908 resultados iguais ao servidor original
-1.21.1. Além disso, **33.721 comparações de transições de block states** coincidiram
-com `StateHolder.setValue` original, e todos os 26.684 estados foram conferidos
-contra o report do jogo. Isso não valida geração completa, redstone, física nem execução no console.
+1.21.1. Além disso, **33.721 transições de block states** e **32.896 observações de
+ImprovedNoise** coincidiram com as chamadas originais: **142.525 resultados** no
+total. Todos os 26.684 estados também foram conferidos contra o report do jogo.
+Isso não valida geração completa, redstone, física nem execução no console.
 O ELF foi compilado para Emotion Engine; boot e desempenho em PS2/PCSX2 ainda
-precisam ser medidos.
+precisam ser medidos. Cinco probes pequenos executam no ELF e mostram sua máscara
+de aprovação; não substituem a suíte completa.
 
 ```sh
 make test
 make ps2     # após configurar PS2DEV, PS2SDK e GSKIT
 make parity  # após importar a referência e configurar JDK 21
+make reference-data && make registry-parity
+make noise-parity
 ```
 
 - [Build reproduzível](docs/BUILD.md)

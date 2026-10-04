@@ -23,6 +23,7 @@ def oracle_symbols(classes):
         'Shared':'SharedConstants', 'Bootstrap':'server.Bootstrap', 'Block':'world.level.block.Block',
         'IdMap':'core.IdMapper', 'StateHolder':'world.level.block.state.StateHolder',
         'BlockState':'world.level.block.state.BlockState', 'Property':'world.level.block.state.properties.Property',
+        'Noise':'world.level.levelgen.synth.ImprovedNoise',
     }
     for alias, name in names.items():
         result[alias] = classes[prefix + name]['symbol']
@@ -50,6 +51,8 @@ def oracle_symbols(classes):
         'IdMap': {'IdMap.byId':'java.lang.Object byId(int)'},
         'StateHolder': {'State.properties':'java.util.Collection getProperties()', 'State.set':'java.lang.Object setValue(net.minecraft.world.level.block.state.properties.Property,java.lang.Comparable)'},
         'Property': {'Property.name':'java.lang.String getName()', 'Property.parse':'java.util.Optional getValue(java.lang.String)'},
+        'Noise': {'Noise.xo':'double xo', 'Noise.yo':'double yo', 'Noise.zo':'double zo',
+            'Noise.value':'double noise(double,double,double)', 'Noise.step':'double noise(double,double,double,double,double)'},
     }
     for alias, members in methods.items():
         for key, signature in members.items():
@@ -98,6 +101,14 @@ def java_tool(name):
     return path
 
 
+def noise_cases():
+    generator=random.Random(0x1211_4e4f495345)
+    seeds=[0,1,0xffffffffffffffff,0x8000000000000000,0x7fffffffffffffff,0x123456789abcdef0]
+    seeds += [generator.getrandbits(64) for _ in range(10)]
+    return [f'noise {variant} {seed:016x} 256' for seed in seeds for variant in
+            ('legacy','xoroshiro','worldgen-legacy','worldgen-xoroshiro')]
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reference',type=pathlib.Path,default=REFERENCE)
@@ -105,6 +116,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
+    parser.add_argument('--suite',choices=['core','noise'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -112,12 +124,12 @@ def main():
         configuration=oracle_symbols(classes)
         properties=output/'symbols.properties'
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
-        inputs=args.cases.read_text().splitlines() if args.cases else cases()
+        inputs=args.cases.read_text().splitlines() if args.cases else (noise_cases() if args.suite=='noise' else cases())
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
         subprocess.run([javac,'-d',str(output),str(ROOT/'tools/oracle/Oracle.java')],check=True)
         cp=os.pathsep.join([str(output)]+[str(path/name) for name in manifest['classpath']])
-        original=subprocess.run([java,'-cp',cp,'mcps2.oracle.Oracle',str(properties),str(cases_file)],capture_output=True,text=True,check=True)
+        original=subprocess.run([java,'-cp',cp,'mcps2.oracle.Oracle',str(properties),str(cases_file)],cwd=output,capture_output=True,text=True,check=True)
         native=subprocess.run([str(args.runner.resolve())]+args.runner_arg,input=cases_file.read_text(),capture_output=True,text=True,check=True)
         expected=[line for line in original.stdout.splitlines() if line.startswith('R\t')]
         actual=native.stdout.splitlines()
@@ -141,6 +153,8 @@ def main():
         }
         if args.cases:
             report['scope']=['block-state property transitions via original StateHolder.setValue']
+        elif args.suite=='noise':
+            report['scope']=['ImprovedNoise construction/random consumption and noise3/noise5 binary64 results']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2))
     except (OSError,ValueError,RuntimeError,KeyError,subprocess.CalledProcessError) as error:

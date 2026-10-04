@@ -29,6 +29,30 @@ public final class Oracle {
     static final Class<?>[] XYZ = {int.class, int.class, int.class};
     static boolean statesInitialized = false;
 
+    static void noise(String[] fields) throws Exception {
+        Object source=random(fields[1],hex(fields[2]));
+        Object noise=type("Noise").getConstructor(type("RandomSource")).newInstance(source);
+        double xo=type("Noise").getField(symbols.getProperty("Noise.xo")).getDouble(noise);
+        double yo=type("Noise").getField(symbols.getProperty("Noise.yo")).getDouble(noise);
+        double zo=type("Noise").getField(symbols.getProperty("Noise.zo")).getDouble(noise);
+        emit("offsets " + h64(Double.doubleToRawLongBits(xo)) + " " + h64(Double.doubleToRawLongBits(yo)) + " " + h64(Double.doubleToRawLongBits(zo)));
+        emit("noise-rng " + h64(nextLong(source)));
+        for (int i=0;i<Integer.parseInt(fields[3]);++i) {
+            double x,y,z;
+            if (i<8) { x=-xo+(i-4)/8.0; y=-yo+(i%3)/4.0; z=-zo+(i%5)/8.0; }
+            else {
+                x=(int)(i*0x9e3779b9+0x11221122)/32.0;
+                y=((int)(i*1664525+54321)%1024)/8.0;
+                z=(int)(i*0x7f4a7c15+0x13579bdf)/64.0;
+            }
+            double value=(double)call("Noise.value",noise,new Class<?>[]{double.class,double.class,double.class},x,y,z);
+            emit("noise3 " + i + " " + h64(Double.doubleToRawLongBits(value)));
+            double scale=(i%7)/16.0,limit=i%3!=0 ? (i%5)/8.0 : -1.0;
+            value=(double)call("Noise.step",noise,new Class<?>[]{double.class,double.class,double.class,double.class,double.class},x,y,z,scale,limit);
+            emit("noise5 " + i + " " + h64(Double.doubleToRawLongBits(value)));
+        }
+    }
+
     static void state(String[] fields) throws Exception {
         if (!statesInitialized) {
             staticCall("Shared.detect", "Shared", NONE);
@@ -161,6 +185,7 @@ public final class Oracle {
                     case "storage": storage(f); break;
                     case "ticks": ticks(f); break;
                     case "state": state(f); break;
+                    case "noise": noise(f); break;
                     case "mix": emit("mix " + h64((long)staticCall("Support.mix","Support",LONG,hex(f[1])))); break;
                     case "zero": {
                         Object source=type("Xoro").getConstructor(long.class,long.class).newInstance(0L,0L);

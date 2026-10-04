@@ -3,6 +3,7 @@
 #include "mcps2/bit_storage.hpp"
 #include "mcps2/tick_queue.hpp"
 #include "mcps2/tick_clock.hpp"
+#include "mcps2/boot_checks.hpp"
 #include <cassert>
 #include <cstdio>
 #include <vector>
@@ -10,6 +11,7 @@
 
 int main() {
     using namespace mcps2;
+    assert(run_boot_checks() == all_boot_checks);
     TickClock clock;
     clock.advance(49999); assert(!clock.consume());
     clock.advance(1); assert(clock.consume() && clock.tick() == 1);

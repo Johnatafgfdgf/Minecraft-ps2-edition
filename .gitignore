@@ -1,6 +1,7 @@
 /.local/
 /build/
 /dist/
+/logs/
 *.o
 *.elf
 *.map

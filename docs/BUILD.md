@@ -50,12 +50,14 @@ export JAVA_HOME=/caminho/para/jdk-21
 make parity
 make reference-data
 make registry-parity
+make noise-parity
 make check-public
 ```
 
 O harness Java tem um pacote próprio, pois as classes obfuscadas do JAR são
 assinadas. Ele descobre símbolos pelos mappings locais e chama as classes
-originais. Entradas, resultados e checksums ficam em `.local/parity/`. Uma falha
+originais. Entradas, resultados e checksums ficam em `.local/parity/`,
+`.local/registry-parity/` e `.local/noise-parity/`. Uma falha
 na referência não vira aprovação silenciosa; o comando falha.
 
 ## Console / emulador
@@ -64,7 +66,14 @@ O ELF atual é a inicialização da plataforma, com tela de diagnóstico. Ainda 
 contém um mundo jogável. Use o carregador de homebrew de seu PS2 ou a execução de
 ELF do PCSX2. BIOS/fontes não são incluídos no projeto. A leitura do controle usa
 os módulos ROM `XSIO2MAN`/`XPADMAN`, com buffer DMA alinhado a 64 bytes e espera
-não bloqueante por conexão.
+não bloqueante por conexão. Módulos `sio2man`/`padman` já residentes são reutilizados
+sem reset do IOP.
+
+A tela e o stdout devem mostrar `Original-JAR golden vectors: PASS (1f / 1f)`.
+Os cinco bits verificam Legacy, Xoroshiro, os dois wrappers WorldgenRandom e
+ImprovedNoise usando vetores pequenos observados no JAR. Uma máscara diferente
+indica divergência no target; preserve o valor ao reportar o boot. Esse probe
+não demonstra geração de mundo completa nem valida toda a suíte no console.
 
 O dispositivo de arquivos é provido pela ponte POSIX do PS2SDK e pelos módulos do
 carregador; o ELF preserva o IOP do carregador e verifica acesso a `rom0:ROMVER`.

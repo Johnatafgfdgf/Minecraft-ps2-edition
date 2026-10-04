@@ -2,6 +2,7 @@
 #include "mcps2/position.hpp"
 #include "mcps2/bit_storage.hpp"
 #include "mcps2/tick_queue.hpp"
+#include "mcps2/improved_noise.hpp"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -61,6 +62,24 @@ template<class R> void worldgen(uint64_t seed, int32_t x, int32_t z, int32_t ind
     const uint64_t value = random.next_long();
     emit("salt " + hex(value) + " " + std::to_string(random.count()));
 }
+uint64_t double_bits(double value) { uint64_t bits; std::memcpy(&bits,&value,sizeof(bits)); return bits; }
+template<class R> void noise(uint64_t seed, unsigned count) {
+    R source(seed); mcps2::ImprovedNoise field(source);
+    emit("offsets " + hex(double_bits(field.offset(0))) + " " + hex(double_bits(field.offset(1))) + " " + hex(double_bits(field.offset(2))));
+    emit("noise-rng " + hex(source.next_long()));
+    for (unsigned i=0;i<count;++i) {
+        double x,y,z;
+        if (i<8) { x=-field.offset(0)+(int(i)-4)/8.0; y=-field.offset(1)+(i%3)/4.0; z=-field.offset(2)+(i%5)/8.0; }
+        else {
+            x=mcps2::signed32(i*0x9e3779b9u+0x11221122u)/32.0;
+            y=(mcps2::signed32(i*1664525u+54321u)%1024)/8.0;
+            z=mcps2::signed32(i*0x7f4a7c15u+0x13579bdfu)/64.0;
+        }
+        emit("noise3 " + std::to_string(i) + " " + hex(double_bits(field.sample(x,y,z))));
+        const double scale=(i%7)/16.0, limit=i%3 ? (i%5)/8.0 : -1.0;
+        emit("noise5 " + std::to_string(i) + " " + hex(double_bits(field.sample(x,y,z,scale,limit))));
+    }
+}
 }
 
 int main() {
@@ -81,6 +100,13 @@ int main() {
         } else if (command == "zero") {
             unsigned count; std::cin >> count; XoroshiroRandom source(0, 0);
             for (unsigned i=0;i<count;++i) emit("zero " + hex(source.next_long()));
+        } else if (command == "noise") {
+            std::string variant,seed;unsigned count;std::cin>>variant>>seed>>count;
+            if (variant=="legacy") noise<LegacyRandom>(parse_hex(seed),count);
+            else if (variant=="xoroshiro") noise<XoroshiroRandom>(parse_hex(seed),count);
+            else if (variant=="worldgen-legacy") noise<WorldgenRandom<LegacyRandom>>(parse_hex(seed),count);
+            else if (variant=="worldgen-xoroshiro") noise<WorldgenRandom<XoroshiroRandom>>(parse_hex(seed),count);
+            else return 2;
         } else if (command == "mix") {
             std::string seed; std::cin >> seed; emit("mix " + hex(mix_stafford13(parse_hex(seed))));
         } else if (command == "pos") {

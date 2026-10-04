@@ -5,6 +5,7 @@
 #include <kernel.h>
 #include <sifrpc.h>
 #include <loadfile.h>
+#include <smod.h>
 #include <unistd.h>
 #include <libpad.h>
 #include <timer.h>
@@ -18,6 +19,11 @@ GSFONTM* font = nullptr;
 char pad_buffer[256] __attribute__((aligned(64)));
 bool pad_open = false, analog_requested = false, fs_ready = false;
 uint16_t previous = 0;
+int ensure_module(const char* name, const char* path) {
+    smod_mod_info_t resident{};
+    const int id = smod_get_mod_by_name(name, &resident);
+    return id > 0 ? id : SifLoadModule(path, 0, nullptr);
+}
 }
 
 bool initialize() {
@@ -27,11 +33,10 @@ bool initialize() {
     const int probe = open("rom0:ROMVER", O_RDONLY);
     fs_ready = probe >= 0;
     if (probe >= 0) close(probe);
-    const int sio = SifLoadModule("rom0:XSIO2MAN", 0, nullptr);
-    const int pad = SifLoadModule("rom0:XPADMAN", 0, nullptr);
+    const int sio = ensure_module("sio2man", "rom0:XSIO2MAN");
+    const int pad = ensure_module("padman", "rom0:XPADMAN");
     if (sio >= 0 && pad >= 0) {
-        padInit(0);
-        pad_open = padPortOpen(0, 0, pad_buffer) != 0;
+        if (padInit(0) >= 0) pad_open = padPortOpen(0, 0, pad_buffer) != 0;
     } else {
         std::printf("Controller modules: XSIO2MAN=%d XPADMAN=%d\n", sio, pad);
     }
@@ -42,6 +47,7 @@ bool initialize() {
     graphics->PSM = GS_PSM_CT16;
     graphics->ZBuffering = GS_SETTING_OFF;
     graphics->DoubleBuffering = GS_SETTING_ON;
+    graphics->PrimAlphaEnable = GS_SETTING_ON;
     dmaKit_init(D_CTRL_RELE_OFF, D_CTRL_MFD_OFF, D_CTRL_STS_UNSPEC,
                 D_CTRL_STD_OFF, D_CTRL_RCYC_8, 1 << DMA_CHANNEL_GIF);
     dmaKit_chan_init(DMA_CHANNEL_GIF);

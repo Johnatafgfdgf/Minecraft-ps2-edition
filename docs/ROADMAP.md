@@ -2,10 +2,15 @@
 
 Esta lista organiza trabalho pendente; não reduz o escopo da Java 1.21.1.
 
-1. Converter reports de blocks/registries em formato próprio privado; preservar
-   todas as propriedades, IDs e default states. Testar transições de stairs,
-   doors, furnace, crops e estados de todos os blocos. Importar dados e assets
-   pessoais sem publicá-los.
+Etapas concluídas no host: PRNGs/seeds/coordenadas/storage/fila por chunk;
+representação de todos os block states com transições; amostragem de valores
+ImprovedNoise exata nos casos comparativos. A plataforma compila para EE e ainda
+precisa de boot em equipamento. Dados exportados não substituem gameplay.
+
+1. Integrar o registro de states ao runtime e carregar os demais registries; as
+   propriedades, IDs, defaults e transições já foram conferidos. Implementar
+   callbacks e mecânicas de stairs, doors, furnace, crops e demais blocos após
+   análise própria. Validar a pipeline de assets com um cliente legítimo fornecido.
 2. Completar paletas, seções, cache/streaming, arenas e save codec. Testar eviction
    sem perda de estado, scheduled ticks, fluid ticks e block entities.
 3. Completar random factories, string seed hashing, gaussian e núcleo numérico
