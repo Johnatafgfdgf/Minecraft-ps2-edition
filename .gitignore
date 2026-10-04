@@ -1,0 +1,19 @@
+/.local/
+/build/
+/dist/
+*.o
+*.elf
+*.map
+*.irx
+*.jar
+*.class
+*.zip
+*.mcpack
+__pycache__/
+*.pyc
+# Proprietary inputs/outputs are local only, regardless of directory name.
+/assets/imported/
+/data/generated/
+/reference/
+/decompiled/
+/oracle-output/

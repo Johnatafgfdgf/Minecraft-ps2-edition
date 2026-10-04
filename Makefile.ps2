@@ -1,0 +1,27 @@
+.DEFAULT_GOAL := all
+ifndef PS2SDK
+$(error PS2SDK is missing; see docs/BUILD.md)
+endif
+ifndef GSKIT
+$(error GSKIT is missing; see docs/BUILD.md)
+endif
+EE_BIN := build/ps2/MinecraftPS2.elf
+SOURCES := $(wildcard src/core/*.cpp) $(wildcard src/platform/ps2/*.cpp)
+EE_OBJS := $(patsubst %.cpp,build/ps2/%.o,$(SOURCES))
+EE_INCS := -Iinclude -I$(GSKIT)/include
+EE_CXXFLAGS := -std=c++17 -fno-exceptions -fno-rtti -ffp-contract=off -fno-fast-math -MMD -MP
+EE_LDFLAGS := -L$(GSKIT)/lib -Wl,-Map,build/ps2/MinecraftPS2.map
+EE_LIBS := -lgskit_toolkit -lgskit -ldmakit -lpadx -lpatches -lm
+EE_DBGINFOFLAGS := -gdwarf-2
+
+.PHONY: all
+all: $(EE_BIN)
+
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.eeglobal_cpp
+
+build/ps2/%.o: %.cpp
+	@mkdir -p $(@D)
+	$(EE_CXX_COMPILE) -c $< -o $@
+
+-include $(EE_OBJS:.o=.d)

@@ -1,0 +1,7 @@
+{
+  "release": "ps2dev/ps2dev v2.0.0",
+  "url": "https://github.com/ps2dev/ps2dev/releases/download/v2.0.0/ps2dev-ubuntu-latest.tar.gz",
+  "sha256": "c8e5dedccf62084d476894e88cd0451b57f1ed288e741eb3c1263010aaffc028",
+  "platform": "linux-x86_64",
+  "compiler": "mips64r5900el-ps2-elf-g++"
+}
