@@ -33,10 +33,20 @@ def oracle_symbols(classes):
         'Blended':'world.level.levelgen.synth.BlendedNoise',
         'Context':'world.level.levelgen.DensityFunction$SinglePointContext','FunctionContext':'world.level.levelgen.DensityFunction$FunctionContext',
         'Density':'world.level.levelgen.DensityFunction','Functions':'world.level.levelgen.DensityFunctions',
+        'Vanilla':'data.registries.VanillaRegistries','Provider':'core.HolderGetter$Provider','LookupProvider':'core.HolderLookup$Provider',
+        'ResourceKey':'resources.ResourceKey','Location':'resources.ResourceLocation','Registries':'core.registries.Registries',
+        'RandomState':'world.level.levelgen.RandomState','Router':'world.level.levelgen.NoiseRouter',
     }
     for alias, name in names.items():
         result[alias] = classes[prefix + name]['symbol']
     methods = {
+        'Vanilla': {'Vanilla.lookup':'net.minecraft.core.HolderLookup$Provider createLookup()'},
+        'LookupProvider': {'Lookup.getter':'net.minecraft.core.HolderGetter$Provider asGetterLookup()'},
+        'ResourceKey': {'Key.create':'net.minecraft.resources.ResourceKey create(net.minecraft.resources.ResourceKey,net.minecraft.resources.ResourceLocation)'},
+        'Location': {'Location.parse':'net.minecraft.resources.ResourceLocation parse(java.lang.String)'},
+        'Registries': {'Registry.settings':'net.minecraft.resources.ResourceKey NOISE_SETTINGS'},
+        'RandomState': {'RandomState.create':'net.minecraft.world.level.levelgen.RandomState create(net.minecraft.core.HolderGetter$Provider,net.minecraft.resources.ResourceKey,long)',
+                        'RandomState.router':'net.minecraft.world.level.levelgen.NoiseRouter router()'},
         'Density': {'Density.value':'double compute(net.minecraft.world.level.levelgen.DensityFunction$FunctionContext)',
             'Density.min':'double minValue()', 'Density.max':'double maxValue()',
             'Density.abs':'net.minecraft.world.level.levelgen.DensityFunction abs()',
@@ -99,6 +109,10 @@ def oracle_symbols(classes):
     for alias, members in methods.items():
         for key, signature in members.items():
             result[key] = classes[prefix + names[alias]]['members'][signature]
+    for i,name in enumerate(('barrierNoise','fluidLevelFloodednessNoise','fluidLevelSpreadNoise','lavaNoise','temperature',
+                             'vegetation','continents','erosion','depth','ridges','initialDensityWithoutJaggedness',
+                             'finalDensity','veinToggle','veinRidged','veinGap')):
+        result[f'Router.{i}']=classes[prefix+names['Router']]['members'][f'net.minecraft.world.level.levelgen.DensityFunction {name}()']
     return result
 
 
@@ -258,6 +272,17 @@ def density_cases():
     return result
 
 
+def density_data_cases(reference,manifest):
+    from compile_density_graph import compile_inventory,ROUTER_FIELDS
+    report=compile_inventory(reference)
+    result=[]
+    for e in report['entries']:
+        if e['status']!='point_graph': continue
+        for seed in (0,1,0xffffffffffffffff,0x8000000000000000,0x7fffffffffffffff,0x123456789abcdef0):
+            result.append(f"density-data {e['setting']} {ROUTER_FIELDS.index(e['field'])} {seed:016x} 256 {e['path'].encode().hex()}")
+    return result
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reference',type=pathlib.Path,default=REFERENCE)
@@ -265,7 +290,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
-    parser.add_argument('--suite',choices=['core','noise','factories','octaves','blended','density'],default='core')
+    parser.add_argument('--suite',choices=['core','noise','factories','octaves','blended','density','density-data'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -274,7 +299,7 @@ def main():
         properties=output/'symbols.properties'
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
         generators={'core':cases,'noise':noise_cases,'factories':factory_cases,'octaves':lambda:octave_cases(path,manifest),
-                    'blended':lambda:blended_cases(path,manifest),'density':density_cases}
+                    'blended':lambda:blended_cases(path,manifest),'density':density_cases,'density-data':lambda:density_data_cases(path,manifest)}
         inputs=args.cases.read_text().splitlines() if args.cases else generators[args.suite]()
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
@@ -318,6 +343,12 @@ def main():
             report['scope']=['DensityFunctions arithmetic/gradient/map/clamp/range-choice construction and declared bounds',
                              'binary64 finite values, signed zeros, NaN semantics and lazy leaf evaluation order',
                              'synthetic graphs; chunk interpolation and complete vanilla router evaluation not yet covered']
+        elif args.suite=='density-data':
+            report['scope']=['verified vanilla JSON -> private MCDG -> native point graphs compared independently with original RandomState routers',
+                             'seeded noise binding including Legacy climate/offset exceptions, named references and point markers',
+                             'supported router fields only; NoiseChunk interpolation, splines, end islands and full chunk generation not yet covered']
+            inventory=json.loads((PRIVATE/'density-data/inventory.json').read_text())
+            report['graph_counts']=inventory['counts']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2))
     except (OSError,ValueError,RuntimeError,KeyError,subprocess.CalledProcessError) as error:

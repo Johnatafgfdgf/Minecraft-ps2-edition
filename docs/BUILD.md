@@ -58,6 +58,7 @@ make factory-parity
 make octave-parity
 make blended-parity
 make density-parity
+make density-data-parity
 make check-public
 ```
 
@@ -65,7 +66,8 @@ O harness Java tem um pacote próprio, pois as classes obfuscadas do JAR são
 assinadas. Ele descobre símbolos pelos mappings locais e chama as classes
 originais. Entradas, resultados e checksums ficam em `.local/parity/`,
 `.local/registry-parity/`, `.local/noise-parity/`, `.local/factory-parity/` e
-`.local/octave-parity/`, `.local/blended-parity/` e `.local/density-parity/`. Uma falha
+`.local/octave-parity/`, `.local/blended-parity/`, `.local/density-parity/` e
+`.local/density-data-parity/`. Grafos MCDG e inventário ficam em `.local/density-data/`. Uma falha
 na referência não vira aprovação silenciosa; o comando falha.
 
 ## Console / emulador
@@ -77,9 +79,10 @@ os módulos ROM `XSIO2MAN`/`XPADMAN`, com buffer DMA alinhado a 64 bytes e esper
 não bloqueante por conexão. Módulos `sio2man`/`padman` já residentes são reutilizados
 sem reset do IOP.
 
-A tela e o stdout devem mostrar `Original-JAR golden vectors: PASS (3ff / 3ff)`.
-Os dez bits verificam Legacy, Xoroshiro, os dois wrappers WorldgenRandom,
-ImprovedNoise, factories/hash, PerlinNoise, NormalNoise, BlendedNoise e um grafo de densidade com vetores pequenos
+A tela e o stdout devem mostrar `Original-JAR golden vectors: PASS (7ff / 7ff)`.
+Os onze bits verificam Legacy, Xoroshiro, os dois wrappers WorldgenRandom,
+ImprovedNoise, factories/hash, PerlinNoise, NormalNoise, BlendedNoise, um grafo
+de densidade e a ligação do clima Legacy com vetores pequenos
 observados no JAR. Uma máscara diferente
 indica divergência no target; preserve o valor ao reportar o boot. Esse probe
 não demonstra geração de mundo completa nem valida toda a suíte no console.

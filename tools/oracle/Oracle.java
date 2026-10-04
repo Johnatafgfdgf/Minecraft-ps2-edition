@@ -43,6 +43,35 @@ public final class Oracle {
     static Object densityCall(String key,Object target,Class<?>[] parameters,Object... arguments) throws Exception {
         return method(key,type("Density"),parameters).invoke(target,arguments);
     }
+    static Object vanillaLookup=null;
+    static final Map<String,Object> randomStates=new HashMap<>();
+    static void densityData(String[] f) throws Exception {
+        ensureBootstrap();
+        if (vanillaLookup==null) {
+            Object lookup=staticCall("Vanilla.lookup","Vanilla",NONE);
+            vanillaLookup=method("Lookup.getter",type("LookupProvider")).invoke(lookup);
+        }
+        String key=f[1]+"/"+f[3];
+        Object state=randomStates.get(key);
+        if (state==null) {
+            Object registry=type("Registries").getField(symbols.getProperty("Registry.settings")).get(null);
+            Object location=staticCall("Location.parse","Location",new Class<?>[]{String.class},f[1]);
+            Object settings=staticCall("Key.create","ResourceKey",new Class<?>[]{type("ResourceKey"),type("Location")},registry,location);
+            state=staticCall("RandomState.create","RandomState",new Class<?>[]{type("Provider"),type("ResourceKey"),long.class},vanillaLookup,settings,hex(f[3]));
+            randomStates.put(key,state);
+        }
+        Object router=call("RandomState.router",state,NONE);
+        Object field=method("Router."+f[2],type("Router")).invoke(router);
+        emit("density-data-bounds " + h64(Double.doubleToLongBits((double)densityCall("Density.min",field,NONE)))
+            + " " + h64(Double.doubleToLongBits((double)densityCall("Density.max",field,NONE))));
+        int[] edges={-1024,-65,-64,-1,0,1,23,24,103,104,127,128,239,240,256,320};
+        for (int i=0;i<Integer.parseInt(f[4]);++i) {
+            int y=i<edges.length?edges[i]:((i*1664525+54321)%2048)-64;
+            Object context=type("Context").getConstructor(XYZ).newInstance((i*0x9e3779b9+0x11221122)%30000001,y,(i*0x7f4a7c15+0x13579bdf)%30000001);
+            double value=(double)densityCall("Density.value",field,new Class<?>[]{type("FunctionContext")},context);
+            emit("density-data " + i + " " + h64(Double.doubleToLongBits(value)));
+        }
+    }
     static void density(String[] f) throws Exception {
         ensureBootstrap();
         int count=Integer.parseInt(f[1]),root=Integer.parseInt(f[2]),samples=Integer.parseInt(f[3]);
@@ -345,6 +374,7 @@ public final class Oracle {
                 String[] f=line.split(" ");
                 switch(f[0]) {
                     case "density": density(f); break;
+                    case "density-data": densityData(f); break;
                     case "rng": rng(f); break;
                     case "pos": position(f); break;
                     case "storage": storage(f); break;

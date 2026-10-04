@@ -47,7 +47,7 @@ executar os métodos originais, com todas as bibliotecas do bundle verificadas.
 ## Testes executados — 2026-10-04
 
 `make test`: verificações nativas de limites, dívidas do relógio, overflow,
-armazenamento, capacidade, deduplicação, ordem e dez probes de boot; nove testes Python da pipeline
+armazenamento, capacidade, deduplicação, ordem e onze probes de boot; 14 testes Python da pipeline
 e proteção dos inputs. `make parity`: **1.313 cenários / 75.908 resultados iguais**
 ao JAR original, incluindo sequences intercaladas, seeds negativas/extremas,
 reseed, forks, limites com rejeição, coordenadas negativas/extremas, layout bruto
@@ -109,7 +109,18 @@ genérico. Os testes de recursos avaliam uma cadeia de 2.049 níveis sem recurs�
 rejeitam workspace insuficiente antes de modificar a saída.
 SHA-256: `57bf1b0d01c5787575948d2e3fd9ba5504e7f5911186b1a8184189182132ab20`.
 Os grafos desta suíte são sintéticos; não são chunks ou routers vanilla completos.
-Total das sete suítes: **502.210 resultados coincidentes**.
+
+`make density-data-parity`: **558 cenários / 143.406 observações iguais** a
+`RandomState.create`/router do JAR. Os 93 campos compiláveis dos noise settings
+vanilla são convertidos automaticamente de JSON privado para MCDG, lidos pelo
+núcleo nativo e ligados a seis seeds. A referência cria os próprios registries e
+noises: não usa os nós convertidos. Isso compara a conversão, o leitor, a ligação
+de seeds e os valores/bounds dos campos no domínio de SinglePointContext.
+SHA-256: `63034b0e36b37892b3c9844444dce4843b2dc8b74d865040033a5fd9888eb27d`.
+Doze campos constam como pendentes por dependerem de spline/end_islands.
+Markers mantêm tipos e comportamento de ponto; wrappers/interpolação de NoiseChunk
+e blending entre versões de saves ainda não foram implementados.
+Total das oito suítes: **645.616 resultados coincidentes**.
 
 Testes Python adicionais verificam arquivos truncados, IDs/offsets inválidos,
 CRC/offsets de packs e conversão de um PNG próprio com todas as linhas preservadas.
@@ -120,8 +131,8 @@ Build EE concluído com ps2dev v2.0.0 / GCC 15.2.0. ELF 32-bit little-endian MIP
 linkado com o startup/linkfile do PS2SDK. Essa evidência é **compilação**, não
 execução ou medição de FPS. Tamanhos text/data/bss e linker map estão nos artifacts
 e logs do build, sem representar o orçamento de um jogo completo. O código de
-núcleo ainda deve ser medido no EE. O ELF executa dez probes de referência;
-o resultado esperado é máscara `0x3ff`.
+núcleo ainda deve ser medido no EE. O ELF executa onze probes de referência;
+o resultado esperado é máscara `0x7ff`.
 Sua aprovação verifica apenas esses vetores pequenos, não toda a suíte de host.
 
 ## O que os testes ainda não provam

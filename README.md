@@ -25,6 +25,7 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - `PerlinNoise` e `NormalNoise`, com octaves esparsas, modo Legacy e parâmetros vanilla.
 - `BlendedNoise`, com 40 octaves, seleção dos campos de densidade, bounds e reseeding.
 - Grafo de densidade com operações aritméticas, gradientes, limites e avaliação de ramos na ordem original.
+- Ligação dos ruídos à seed; conversor/leitor MCDG de 93 campos vanilla, comparados ao RandomState original.
 - Coordenadas BlockPos/SectionPos/ChunkPos e layout SimpleBitStorage.
 - Fila de ticks pendentes por chunk, com identidade, deduplicação e prioridades.
 - Importação privada da referência oficial com verificação de hashes.
@@ -32,14 +33,14 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - Registro nativo de todos os block states/propriedades e transições equivalentes.
 - Gerador privado de registries, world data pack e conversão de texturas pessoais.
 
-**Paridade no host:** **502.210 resultados coincidentes** com chamadas ao servidor
-original 1.21.1 em sete suítes: primitivas, block states, ImprovedNoise, factories,
-Perlin/Normal, BlendedNoise e operações do grafo de densidade. Os testes numéricos
+**Paridade no host:** **645.616 resultados coincidentes** com chamadas ao servidor
+original 1.21.1 em oito suítes: primitivas, block states, ImprovedNoise, factories,
+Perlin/Normal, BlendedNoise, operações e dados do grafo de densidade. Os testes numéricos
 comparam bits de double sem tolerância; a suíte de densidade normaliza somente payloads de NaN.
 Todos os 26.684 estados também foram conferidos contra o report do jogo.
 Isso não valida geração completa, redstone, física nem execução no console.
 O ELF foi compilado para Emotion Engine; boot e desempenho em PS2/PCSX2 ainda
-precisam ser medidos. Dez probes pequenos executam no ELF e mostram sua máscara
+precisam ser medidos. Onze probes pequenos executam no ELF e mostram sua máscara
 de aprovação; não substituem a suíte completa.
 
 ```sh
@@ -52,6 +53,7 @@ make factory-parity
 make octave-parity
 make blended-parity
 make density-parity
+make density-data-parity
 ```
 
 - [Build reproduzível](docs/BUILD.md)

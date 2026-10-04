@@ -14,6 +14,7 @@ original. O núcleo será integrado ao gerador de chunks após comparar cada cam
 | `NormalNoise` | Dois PerlinNoise e amplitudes | Construção sequencial no mesmo source; segunda entrada multiplicada por 1.0181268882175227; fator depende do intervalo entre amplitudes não nulas | `octave_noise.hpp`, host verificado |
 | `BlendedNoise` | Source, cinco parâmetros, coordenadas inteiras | 16 octaves para cada limite e 8 para o selector; wrapping, quantização Y e clamped lerp na ordem original | `blended_noise.hpp`, host verificado |
 | `DensityFunctions` aritméticas | IDs de filhos, parâmetros e limites | Limites e especialização de constantes equivalentes; avaliação ordenada e preguiçosa, sem recursão | `density_graph.hpp`, host verificado |
+| `RandomState` noise wiring | World seed, modo Legacy, recursos | Factory por nome; casos específicos de clima/offset/terrain; instâncias compartilháveis | `worldgen_noise.hpp`, routers no host verificados |
 
 A transformação MD5 é uma implementação própria do algoritmo matemático descrito
 no [RFC 1321](https://www.rfc-editor.org/rfc/rfc1321), com buffer de 64 bytes. O
@@ -38,5 +39,6 @@ Constrói os dois campos de limites antes do selector; reseeding preserva os cin
 parâmetros originais. O selector decide quando o campo inferior/superior pode ser
 ignorado sem mudar o resultado. A saída ainda é uma função de densidade: não inclui
 aquifers, carvers, surface rules, features, estruturas ou o grafo completo de density
-functions. As operações aritméticas já foram comparadas; a próxima integração
-liga os campos ao grafo e converte definições privadas automaticamente.
+functions. A ligação de ruídos e a conversão privada já comparam 93 campos de
+routers vanilla; faltam splines, ilhas do End e os wrappers de NoiseChunk antes
+das etapas que produzem chunks completos.

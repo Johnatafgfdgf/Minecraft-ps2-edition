@@ -66,6 +66,65 @@ Isso estabelece operações do grafo. Ainda não estabelece paridade de chunks,
 biomas, splines, aquifers, carvers, superfície, features ou estruturas.
 
 `make density-parity` verifica 1.857 grafos e 110.826 observações coincidentes.
-Cada nó ocupa no máximo 64 bytes; cada frame de avaliação, 16 bytes. A arena e as
+Cada nó ocupa no máximo 64 bytes; cada frame de avaliação, 24 bytes. A arena e as
 folhas externas devem permanecer válidas durante o uso do grafo. Inputs externos
 declaram seus limites e precisam respeitá-los para manter os atalhos equivalentes.
+
+## Ligação de ruídos e dados — análise
+
+`RandomState` cria uma factory posicional a partir da seed e do algoritmo dos
+noise settings. `Noises.instantiate` usa o nome completo do recurso na factory,
+então cria NormalNoise moderno com os parâmetros do registry. O visitor mantém
+instâncias compartilhadas por recurso. BlendedNoise usa `minecraft:terrain` no
+modo moderno e um LegacyRandomSource com a seed do mundo no modo Legacy.
+
+No modo Legacy, o visitor substitui temperature/vegetation por NormalNoise
+Legacy com firstOctave -7 e duas amplitudes unitárias, usando seed/seed+1. Para
+shift, usa NormalNoise moderno, firstOctave 0 e uma amplitude zero, ainda com
+a factory do nome `minecraft:offset`. Isso é uma regra do código analisado,
+independente dos parâmetros externos de noise JSON.
+
+| Nó | Coordenadas usadas no NormalNoise | Limites |
+| --- | --- | --- |
+| noise | `(x*xzScale, y*yScale, z*xzScale)` | `±noise.maxValue()` |
+| shift | `(x/4,y/4,z/4)`, saída multiplicada por 4 | `±(noise.maxValue()*4)` |
+| shift_a | `(x/4,0,z/4)`, saída multiplicada por 4 | Idem |
+| shift_b | `(z/4,x/4,0)`, saída multiplicada por 4 | Idem |
+| shifted_noise | Escala de cada eixo, depois soma do filho correspondente, em ordem X/Y/Z | `±noise.maxValue()` |
+
+As referências de registry precisam conservar um nó HolderHolder: seu valor e
+limites delegam ao filho, mas ele não é uma Constant para a especialização de
+add/mul. Os markers interpolated/flat_cache/cache_2d/cache_once/cache_all_in_cell
+também conservam seus tipos. Seu `compute` de ponto ainda delega ao filho;
+`NoiseChunk` troca esses markers por wrappers com outra semântica e isso permanece
+uma etapa própria. `BlendDensity` declara limites infinitos e, no contexto
+SinglePointContext com Blender vazio, devolve o valor recebido. O sampler de
+pontos não pode ser tomado como o interpolador de chunks nem blending de saves.
+
+A conversão lê somente o JAR verificado, resolve referências, retém propriedades
+e parâmetros e escreve um formato próprio em `.local/`. Um tipo não implementado
+deve impedir a compilação daquele grafo, com diagnóstico da dependência que
+faltou. Não gerar uma substituição zero para uma função desconhecida.
+
+## Pipeline implementada
+
+`tools/compile_density_graph.py --inventory` gera **MCDG v1** little-endian com
+header de 40 bytes, nós de 40 bytes no disco, descritores de ruídos de 64 bytes,
+nomes e amplitudes em pools. CRC-32 cobre o payload. O leitor `DensityPack`
+valida versão/domínio, CRC, tamanho, offsets, referências anteriores, tipos de
+recursos e números antes de expor views. O runtime recebe pools separados para
+os objetos de ruído, octaves, nós e frames; não precisa de JSON no EE.
+
+Foram convertidos **93 dos 105 campos** dos sete noise settings vanilla. Somam
+411 nós e 28.144 bytes de packs; isso não inclui os pools de ruído construídos
+por seed. O inventário nomeia os 12 campos pendentes: depth, initial density e
+final density dos três Overworld settings dependem de spline; três campos do
+End dependem de end_islands. O compilador não emite grafos incompletos para eles.
+
+`make density-data-parity` lê esses packs pelo leitor nativo e compara **558
+cenários / 143.406 observações** com `RandomState.create` e `router` no próprio
+JAR, usando seis seeds. A referência não lê o MCDG nem reconstrói o resultado a
+partir do conversor; usa seus próprios registries e factories. Cobre os campos
+compilados, inclusive densidade final de Nether/caves/floating_islands, ainda
+no domínio de pontos anterior aos wrappers de NoiseChunk. Não comprova o layout
+dos blocos de um chunk nem o comportamento das etapas posteriores da geração.

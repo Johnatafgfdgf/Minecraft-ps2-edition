@@ -6,7 +6,9 @@ Etapas concluídas no host: PRNGs/seeds/coordenadas/storage/fila por chunk;
 representação de todos os block states com transições; factories de posição e
 strings; ImprovedNoise/PerlinNoise/NormalNoise/BlendedNoise exatos nos casos comparativos.
 Aritmética, gradientes, limites e seleção de ramos do grafo de densidade conferidos
-em grafos sintéticos; ligação de campos e routers completos ainda pendentes.
+em grafos sintéticos; 93 campos de routers vanilla e sua ligação de seeds
+conferidos no domínio de pontos. Doze campos spline/End e wrappers de chunks
+ainda pendentes.
 A plataforma compila para EE e ainda
 precisa de boot em equipamento. Dados exportados não substituem gameplay.
 

@@ -4,6 +4,7 @@
 #include "mcps2/octave_noise.hpp"
 #include "mcps2/blended_noise.hpp"
 #include "mcps2/density_graph.hpp"
+#include "mcps2/worldgen_noise.hpp"
 #include <cstring>
 
 namespace mcps2 {
@@ -78,6 +79,12 @@ uint32_t run_boot_checks() {
     if (accepted && graph.sample(id, {0,24,0}, density_frames, 5, density) == DensityResult::ok
         && bits(density) == 0x3fb7f705a895a129ULL && bits(graph.node(id)->minimum) == 0
         && bits(graph.node(id)->maximum) == 0x3fd3c7ec4ba67feaULL) mask |= 512;
+    WorldgenNoiseFactory legacy_world(0,true); NoiseOctave climate_storage[4]; NormalNoise climate;
+    const int32_t climate_x = signed32(7u * 0x9e3779b9u + 0x11221122u) % 30000001;
+    const int32_t climate_z = signed32(7u * 0x7f4a7c15u + 0x13579bdfu) % 30000001;
+    if (legacy_world.normal(climate,"minecraft:temperature",0,nullptr,0,climate_storage,4)
+        && bits(climate.max_value()) == 0x4011c71c71c71c71ULL
+        && bits(climate.sample(double(climate_x)*0.25,0,double(climate_z)*0.25)) == 0x3f97868416c77b26ULL) mask |= 1024;
     return mask;
 }
 }

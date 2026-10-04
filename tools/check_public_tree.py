@@ -5,7 +5,7 @@ import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BAD_PARTS = {'.local', 'decompiled', 'reference', 'oracle-output'}
-BAD_SUFFIXES = {'.jar', '.class', '.irx', '.elf', '.png', '.ogg', '.nbt', '.mcpack'}
+BAD_SUFFIXES = {'.jar', '.class', '.irx', '.elf', '.png', '.ogg', '.nbt', '.mcpack', '.mcdg'}
 
 
 def forbidden(path):

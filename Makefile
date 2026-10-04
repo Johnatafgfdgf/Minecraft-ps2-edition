@@ -4,7 +4,7 @@ PYTHON ?= python3
 HOST_FLAGS := -std=c++17 -O2 -g -Wall -Wextra -Werror -Wpedantic -ffp-contract=off -fno-fast-math -Iinclude
 CORE := $(wildcard src/core/*.cpp)
 
-.PHONY: help ps2 test parity reference-data registry-parity noise-parity factory-parity octave-parity blended-parity density-parity check-public clean
+.PHONY: help ps2 test parity reference-data registry-parity noise-parity factory-parity octave-parity blended-parity density-parity density-data-parity check-public clean
 help:
 	@echo 'make ps2         -> build/ps2/MinecraftPS2.elf (PS2DEV/PS2SDK/GSKIT required)'
 	@echo 'make test        -> native unit tests and import-tool tests'
@@ -15,6 +15,7 @@ help:
 	@echo 'make octave-parity -> original PerlinNoise/NormalNoise and all vanilla noise parameters'
 	@echo 'make blended-parity -> original blended density sampling and reseeding'
 	@echo 'make density-parity -> original density graph operations, bounds and lazy evaluation'
+	@echo 'make density-data-parity -> private vanilla JSON graphs against independently seeded original routers'
 	@echo 'make check-public -> reject proprietary/build inputs in tracked files'
 
 ps2:
@@ -32,7 +33,11 @@ build/host/registry: tests/registry_runner.cpp $(CORE) $(wildcard include/mcps2/
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/registry_runner.cpp $(CORE) -o $@
 
-test: build/host/tests build/host/registry
+build/host/density-data: tests/density_data_runner.cpp $(CORE) $(wildcard include/mcps2/*.hpp)
+	@mkdir -p $(@D)
+	$(CXX) $(HOST_FLAGS) tests/density_data_runner.cpp $(CORE) -o $@
+
+test: build/host/tests build/host/registry build/host/density-data
 	./build/host/tests
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py' -v
 
@@ -59,6 +64,9 @@ blended-parity: build/host/parity
 
 density-parity: build/host/parity
 	$(PYTHON) tools/run_parity.py --runner build/host/parity --suite density --output .local/density-parity
+
+density-data-parity: build/host/density-data
+	$(PYTHON) tools/run_parity.py --runner build/host/density-data --suite density-data --output .local/density-data-parity
 
 check-public:
 	$(PYTHON) tools/check_public_tree.py
