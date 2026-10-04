@@ -21,8 +21,9 @@ comportamento; não contém código da Mojang.
 
 O caminho estudado é `DensityFunction.compute(FunctionContext)` e as factories
 usadas para construir seu grafo. O visitor de ligação de ruídos foi analisado na
-etapa descrita abaixo. `fillArray` e os wrappers de `NoiseChunk` ainda precisam
-ser portados antes de usar o grafo na geração de chunks.
+etapa descrita abaixo. Os wrappers de `NoiseChunk` são descritos em
+[NOISE_CHUNK.md](NOISE_CHUNK.md). O fillArray especializado do grafo e seu visitor
+de integração ao router continuam pendentes antes de geração de chunks.
 
 ## Regras numéricas e de avaliação
 

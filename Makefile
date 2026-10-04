@@ -19,6 +19,7 @@ help:
 	@echo 'make density-parity -> original density graph operations, bounds and lazy evaluation'
 	@echo 'make density-spline-parity -> original nested float splines, bounds and lazy evaluation'
 	@echo 'make density-data-parity -> private vanilla JSON graphs against independently seeded original routers'
+	@echo 'make noise-chunk-parity -> original chunk caches, interpolation, counters and cell/slice order'
 	@echo 'make check-public -> reject proprietary/build inputs in tracked files'
 
 ps2:
@@ -40,8 +41,21 @@ build/host/density-data: tests/density_data_runner.cpp $(CORE) $(wildcard includ
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/density_data_runner.cpp $(CORE) -o $@
 
-test: build/host/tests build/host/registry build/host/density-data
+build/host/noise-chunk: tests/noise_chunk_runner.cpp $(CORE) $(wildcard include/mcps2/*.hpp)
+	@mkdir -p $(@D)
+	$(CXX) $(HOST_FLAGS) tests/noise_chunk_runner.cpp $(CORE) -o $@
+
+build/host/noise-chunk-tests: tests/noise_chunk_tests.cpp $(CORE) $(wildcard include/mcps2/*.hpp)
+	@mkdir -p $(@D)
+	$(CXX) $(HOST_FLAGS) tests/noise_chunk_tests.cpp $(CORE) -o $@
+
+.PHONY: noise-chunk-parity
+noise-chunk-parity: build/host/noise-chunk
+	$(PYTHON) tools/run_parity.py --runner build/host/noise-chunk --suite noise-chunk --output .local/noise-chunk-parity
+
+test: build/host/tests build/host/registry build/host/density-data build/host/noise-chunk-tests
 	./build/host/tests
+	./build/host/noise-chunk-tests
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py' -v
 
 parity: build/host/parity

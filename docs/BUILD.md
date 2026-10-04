@@ -62,6 +62,7 @@ make blended-parity
 make density-parity
 make density-spline-parity
 make density-data-parity
+make noise-chunk-parity
 make check-public
 ```
 
@@ -70,7 +71,7 @@ assinadas. Ele descobre símbolos pelos mappings locais e chama as classes
 originais. Entradas, resultados e checksums ficam em `.local/parity/`,
 `.local/registry-parity/`, `.local/noise-parity/`, `.local/simplex-parity/`, `.local/float-parity/`, `.local/factory-parity/`,
 `.local/octave-parity/`, `.local/blended-parity/`, `.local/density-parity/`, `.local/density-spline-parity/` e
-`.local/density-data-parity/`. Grafos MCDG e inventário ficam em `.local/density-data/`. Uma falha
+`.local/density-data-parity/` e `.local/noise-chunk-parity/`. Grafos MCDG e inventário ficam em `.local/density-data/`. Uma falha
 na referência não vira aprovação silenciosa; o comando falha.
 
 ## Console / emulador
@@ -82,18 +83,19 @@ os módulos ROM `XSIO2MAN`/`XPADMAN`, com buffer DMA alinhado a 64 bytes e esper
 não bloqueante por conexão. Módulos `sio2man`/`padman` já residentes são reutilizados
 sem reset do IOP.
 
-A tela e o stdout devem mostrar `Reference numeric vectors: PASS (7fff / 7fff)`.
-Os quinze bits verificam Legacy, Xoroshiro, os dois wrappers WorldgenRandom,
+A tela e o stdout devem mostrar `Reference numeric vectors: PASS (ffff / ffff)`.
+Os dezesseis bits verificam Legacy, Xoroshiro, os dois wrappers WorldgenRandom,
 ImprovedNoise, factories/hash, PerlinNoise, NormalNoise, BlendedNoise, um grafo
 de densidade, a ligação do clima Legacy, Simplex 2D, ilhas do End, spline e
-compatibilidade binary32 com vetores pequenos
-observados no JAR. Uma máscara diferente
+compatibilidade binary32 e interpolação/cache de NoiseChunk com vetores pequenos.
+Os vetores de regras vêm do JAR; os vetores da camada binary32 vêm de expressões
+Java 21 próprias. Uma máscara diferente
 indica divergência no target; preserve o valor ao reportar o boot. Esse probe
 não demonstra geração de mundo completa nem valida toda a suíte no console.
 
 Depois de `make ps2`, execute `python3 tools/check_ee_float.py` com o EE toolchain
 no PATH. O CI também exige essa auditoria: os objetos de precisão, spline, End,
-grafo e leitor e os helpers binary64 verificados devem conservar o caminho sem
+grafo, leitor e NoiseChunk e os helpers binary64 verificados devem conservar o caminho sem
 instruções single-precision de cálculo/comparação. Isso não substitui execução
 ou medição de custo no equipamento.
 

@@ -42,6 +42,16 @@ def oracle_symbols(classes):
         'Vanilla':'data.registries.VanillaRegistries','Provider':'core.HolderGetter$Provider','LookupProvider':'core.HolderLookup$Provider',
         'ResourceKey':'resources.ResourceKey','Location':'resources.ResourceLocation','Registries':'core.registries.Registries',
         'RandomState':'world.level.levelgen.RandomState','Router':'world.level.levelgen.NoiseRouter',
+        'Chunk':'world.level.levelgen.NoiseChunk','NoiseSettings':'world.level.levelgen.NoiseSettings',
+        'GeneratorSettings':'world.level.levelgen.NoiseGeneratorSettings',
+        'ChunkGenerator':'world.level.levelgen.NoiseBasedChunkGenerator',
+        'BeardMarker':'world.level.levelgen.DensityFunctions$BeardifierMarker',
+        'Beard':'world.level.levelgen.DensityFunctions$BeardifierOrMarker',
+        'Blender':'world.level.levelgen.blending.Blender','FluidPicker':'world.level.levelgen.Aquifer$FluidPicker',
+        'ContextProvider':'world.level.levelgen.DensityFunction$ContextProvider','Getter':'core.HolderGetter',
+        'ChunkInterpolated':'world.level.levelgen.NoiseChunk$NoiseInterpolator',
+        'ChunkFlat':'world.level.levelgen.NoiseChunk$FlatCache','ChunkColumn':'world.level.levelgen.NoiseChunk$Cache2D',
+        'ChunkOnce':'world.level.levelgen.NoiseChunk$CacheOnce','ChunkCell':'world.level.levelgen.NoiseChunk$CacheAllInCell',
     }
     for alias, name in names.items():
         result[alias] = classes[prefix + name]['symbol']
@@ -123,6 +133,28 @@ def oracle_symbols(classes):
     for alias, members in methods.items():
         for key, signature in members.items():
             result[key] = classes[prefix + names[alias]]['members'][signature]
+    extra = {
+        'Density': {'Density.fill':'void fillArray(double[],net.minecraft.world.level.levelgen.DensityFunction$ContextProvider)'},
+        'FunctionContext': {'Context.x':'int blockX()', 'Context.z':'int blockZ()'},
+        'ContextProvider': {'Provider.index':'net.minecraft.world.level.levelgen.DensityFunction$FunctionContext forIndex(int)',
+                            'Provider.direct':'void fillAllDirectly(double[],net.minecraft.world.level.levelgen.DensityFunction)'},
+        'Provider': {'Getter.lookup':'net.minecraft.core.HolderGetter lookupOrThrow(net.minecraft.resources.ResourceKey)'},
+        'Getter': {'Getter.get':'net.minecraft.core.Holder$Reference getOrThrow(net.minecraft.resources.ResourceKey)'},
+        'Holder': {'Holder.value':'java.lang.Object value()'},
+        'Blender': {'Blender.empty':'net.minecraft.world.level.levelgen.blending.Blender empty()'},
+        'BeardMarker': {'Beard.instance':'net.minecraft.world.level.levelgen.DensityFunctions$BeardifierMarker INSTANCE'},
+        'ChunkGenerator': {'Chunk.fluid':'net.minecraft.world.level.levelgen.Aquifer$FluidPicker createFluidPicker(net.minecraft.world.level.levelgen.NoiseGeneratorSettings)'},
+        'Chunk': {'Chunk.initialize':'void initializeForFirstCellX()', 'Chunk.advance':'void advanceCellX(int)',
+                  'Chunk.select':'void selectCellYZ(int,int)', 'Chunk.y':'void updateForY(int,double)',
+                  'Chunk.x':'void updateForX(int,double)', 'Chunk.z':'void updateForZ(int,double)',
+                  'Chunk.stop':'void stopInterpolation()', 'Chunk.swap':'void swapSlices()'},
+    }
+    for alias, members in extra.items():
+        for key, signature in members.items(): result[key]=classes[prefix+names[alias]]['members'][signature]
+    for name in ('interpolators','cellCaches','sliceFillingContextProvider','cellStartBlockX','cellStartBlockY','cellStartBlockZ',
+                 'inCellX','inCellY','inCellZ','arrayIndex','interpolationCounter','arrayInterpolationCounter','interpolating','fillingCell'):
+        signature=next(k for k in classes[prefix+names['Chunk']]['members'] if k.endswith(' '+name))
+        result['Chunk.field.'+name]=classes[prefix+names['Chunk']]['members'][signature]
     for i,name in enumerate(('barrierNoise','fluidLevelFloodednessNoise','fluidLevelSpreadNoise','lavaNoise','temperature',
                              'vegetation','continents','erosion','depth','ridges','initialDensityWithoutJaggedness',
                              'finalDensity','veinToggle','veinRidged','veinGap')):
@@ -352,6 +384,18 @@ def density_data_cases(reference,manifest):
     return result
 
 
+def noise_chunk_cases():
+    result=[]
+    configurations=[(4,8,-64,24,2,-17,-33,2),(8,4,-16,16,2,7,-9,1),
+                    (16,16,0,32,1,-16,16,1),(4,4,-16,16,4,0,0,1),
+                    (4,8,-64,384,1,-30000000,29999999,1),(8,4,0,128,1,2147483632,-2147483648,1)]
+    for i,(width,height,min_y,total_height,count,x,z,cycles) in enumerate(configurations):
+        for mode in range(3):
+            for style in range(2):
+                result.append(f'chunk {width} {height} {min_y} {total_height} {count} {x} {z} {mode} {style} {cycles} {((i+mode)*0x9e3779b97f4a7c15)&((1<<64)-1):016x}')
+    return result
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reference',type=pathlib.Path,default=REFERENCE)
@@ -359,7 +403,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
-    parser.add_argument('--suite',choices=['core','noise','simplex','java-float','factories','octaves','blended','density','density-spline','density-data'],default='core')
+    parser.add_argument('--suite',choices=['core','noise','simplex','java-float','factories','octaves','blended','density','density-spline','density-data','noise-chunk'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -369,11 +413,11 @@ def main():
         properties.write_text('\n'.join(f'{key}={value}' for key,value in sorted(configuration.items()))+'\n')
         generators={'core':cases,'noise':noise_cases,'simplex':simplex_cases,'java-float':float_cases,'factories':factory_cases,'octaves':lambda:octave_cases(path,manifest),
                     'blended':lambda:blended_cases(path,manifest),'density':density_cases,'density-spline':spline_cases,
-                    'density-data':lambda:density_data_cases(path,manifest)}
+                    'density-data':lambda:density_data_cases(path,manifest),'noise-chunk':noise_chunk_cases}
         inputs=args.cases.read_text().splitlines() if args.cases else generators[args.suite]()
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
-        subprocess.run([javac,'-d',str(output),str(ROOT/'tools/oracle/Oracle.java')],check=True)
+        subprocess.run([javac,'-d',str(output),str(ROOT/'tools/oracle/Oracle.java'),str(ROOT/'tools/oracle/NoiseChunkOracle.java')],check=True)
         cp=os.pathsep.join([str(output)]+[str(path/name) for name in manifest['classpath']])
         original=subprocess.run([java,'-cp',cp,'mcps2.oracle.Oracle',str(properties),str(cases_file)],cwd=output,capture_output=True,text=True,check=True)
         native=subprocess.run([str(args.runner.resolve())]+args.runner_arg,input=cases_file.read_text(),capture_output=True,text=True,check=True)
@@ -433,6 +477,10 @@ def main():
                              'NoiseChunk interpolation, aquifers and full chunk generation not yet covered']
             inventory=json.loads((PRIVATE/'density-data/inventory.json').read_text())
             report['graph_counts']=inventory['counts']
+        elif args.suite=='noise-chunk':
+            report['scope']=['original NoiseChunk constructors, five runtime cache wrappers and complete cell/slice lifecycle',
+                             'binary64 interpolation (Y/X/Z traversal versus X/Y/Z filling), context identity, counters, bulk callbacks and leaf call trace',
+                             'synthetic wrapper wiring with seeded ImprovedNoise and original gradient fields; vanilla router visitor and full chunks remain pending']
         (output/'report.json').write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2))
     except (OSError,ValueError,RuntimeError,KeyError,subprocess.CalledProcessError) as error:

@@ -445,6 +445,7 @@ public final class Oracle {
                 switch(f[0]) {
                     case "density": density(f); break;
                     case "density-data": densityData(f); break;
+                    case "chunk": NoiseChunkOracle.run(f); break;
                     case "rng": rng(f); break;
                     case "pos": position(f); break;
                     case "storage": storage(f); break;

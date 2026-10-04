@@ -1,4 +1,5 @@
 #include "mcps2/boot_checks.hpp"
+#include "mcps2/noise_chunk.hpp"
 #include "mcps2/random.hpp"
 #include "mcps2/improved_noise.hpp"
 #include "mcps2/octave_noise.hpp"
@@ -112,6 +113,24 @@ uint32_t run_boot_checks() {
         && bits(java_float::add(1.0f,0x1.8p-23f))==0x3f800002u
         && bits(java_float::divide(1.0f,10.0f))==0x3dcccccdu
         && bits(java_float::multiply(smallest,1.0f))==1u) mask |= 16384;
+    DensityNode chunk_node[1]; DensityFrame chunk_frame[1]; DensityGraph chunk_graph(chunk_node,1);
+    NoiseChunkDensityField chunk_field{&chunk_graph,0,chunk_frame,1};
+    NoiseCache cache_arena[3]; NoiseChunk chunk({-64,24,4,8,2,-17,-33},cache_arena,3);
+    double slice_buffer[24],once_buffer[128],cell_buffer[128]; NoiseCache *interpolator=nullptr,*once=nullptr,*cell=nullptr;
+    double interpolated_value=0,cell_value=0;
+    if (chunk_graph.append({DensityOp::y_gradient,0,0,0,-65,104,-1.3,2.7},id)==DensityResult::ok
+        && chunk.wrap(NoiseCacheKind::interpolated,chunk_field.function(),slice_buffer,24,interpolator)==NoiseChunkResult::ok
+        && chunk.wrap(NoiseCacheKind::once,interpolator->function(),once_buffer,128,once)==NoiseChunkResult::ok
+        && chunk.wrap(NoiseCacheKind::cell,once->function(),cell_buffer,128,cell)==NoiseChunkResult::ok
+        && chunk.initialize_first_x()==NoiseChunkResult::ok && chunk.advance_x(0)==NoiseChunkResult::ok
+        && chunk.select_yz(2,0)==NoiseChunkResult::ok) {
+        chunk.update_y(-43,0.625); chunk.update_x(-19,0.25); chunk.update_z(-34,0.5);
+        const auto a=interpolator->function(),b=cell->function();
+        if (a.sample(a.state,chunk.context(),interpolated_value)==NoiseChunkResult::ok
+            && b.sample(b.state,chunk.context(),cell_value)==NoiseChunkResult::ok
+            && bits(interpolated_value)==0xbfe8eff1753eb662ULL && bits(cell_value)==0xbfe8eff1753eb662ULL
+            && chunk.stop()==NoiseChunkResult::ok) mask|=32768;
+    }
     return mask;
 }
 }

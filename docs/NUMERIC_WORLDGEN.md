@@ -45,8 +45,9 @@ parâmetros originais. O selector decide quando o campo inferior/superior pode s
 ignorado sem mudar o resultado. A saída ainda é uma função de densidade: não inclui
 aquifers, carvers, surface rules, features ou estruturas. A ligação de ruídos e
 a conversão privada comparam todos os 105 campos dos routers vanilla no domínio
-de SinglePointContext. Os wrappers de NoiseChunk ainda devem ser portados antes
-das etapas que produzem chunks completos. Os cálculos float/double foram
+de SinglePointContext. Os cinco wrappers de NoiseChunk e o ciclo de células são
+comparados em fixtures próprias; sua integração aos routers e as etapas que
+produzem chunks completos continuam pendentes. Os cálculos float/double foram
 comparados no host; os novos probes do ELF permitem detectar diferenças no EE,
 mas ainda não houve execução desses testes em PS2/PCSX2.
 
@@ -61,7 +62,7 @@ builds. Comparações/min/max usam padrões de bits, incluindo ±0 e NaN.
 
 Essa camada foi comparada com expressões Java 21 próprias, separadamente das
 chamadas a métodos Minecraft. `tools/check_ee_float.py` verifica os objetos de
-precisão/spline/End/grafo/leitor e quatro helpers binary64 linkados, rejeitando
+precisão/spline/End/grafo/leitor/NoiseChunk e quatro helpers binary64 linkados, rejeitando
 instruções single-precision de cálculo/comparação. A auditoria integra o CI.
 Ela não mede performance nem comprova runtime no console. O custo desse caminho
 precisa ser medido no EE antes de otimizar; qualquer otimização deverá manter

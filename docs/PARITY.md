@@ -47,7 +47,7 @@ executar os métodos originais, com todas as bibliotecas do bundle verificadas.
 ## Testes executados — 2026-10-04
 
 `make test`: verificações nativas de limites, dívidas do relógio, overflow,
-armazenamento, capacidade, deduplicação, ordem e quinze probes de boot; 17 testes Python da pipeline
+armazenamento, capacidade, deduplicação, ordem e dezesseis probes de boot; 17 testes Python da pipeline
 e proteção dos inputs. `make parity`: **1.313 cenários / 75.908 resultados iguais**
 ao JAR original, incluindo sequences intercaladas, seeds negativas/extremas,
 reseed, forks, limites com rejeição, coordenadas negativas/extremas, layout bruto
@@ -119,8 +119,9 @@ de seeds e os valores/bounds dos campos no domínio de SinglePointContext.
 SHA-256: `2a979e39f2f9b6c51720cff2979c89c8cc7b97b086e7da3dc24d74f9d94d9225`.
 Inclui splines, weird_scaled_sampler e end_islands. Os packs MCDG v2 armazenam
 locations/derivatives em binary32 e referências dos valores em pools privados.
-Markers mantêm tipos e comportamento de ponto; wrappers/interpolação de NoiseChunk
-e blending entre versões de saves ainda não foram implementados.
+Markers mantêm tipos e comportamento de ponto. Os wrappers/interpolação de
+NoiseChunk são verificados separadamente abaixo; seu visitor de integração ao
+router vanilla e blending entre versões de saves ainda estão pendentes.
 `make density-spline-parity`: **416 cenários / 32.073 observações iguais** às
 factories de CubicSpline e ao compute/bounds da DensityFunctions.Spline original.
 Os grafos sintéticos exercitam extrapolação, um ponto, knots repetidos, derivadas
@@ -135,7 +136,17 @@ sampling 2D com empates/limites de piso e heights/density do End em seis seeds,
 incluindo ilha central, ilhas externas, divisões negativas e overflow Java.
 Simplex 3D e chunks completos não são cobertos por essa suíte.
 SHA-256: `ba25ede9a980e64868fde971dafc59984fec6b214ce46e1250d24b44c5bbccd9`.
-Total das dez suítes que invocam Minecraft: **733.735 resultados coincidentes**.
+`make noise-chunk-parity`: **36 cenários / 207.888 registros iguais** ao original.
+Verifica NoiseInterpolator, FlatCache, Cache2D, CacheOnce e CacheAllInCell, limites,
+fillArray, contadores, identidade de contexto, indexação, reinício e troca de slices.
+Compara bits binary64 e hash/contagem da sequência de fillers. Os contextos incluem
+coordenadas negativas/extremas e altura 384. A fixture usa wrappers originais sobre
+ImprovedNoise/gradientes originais e folhas instrumentadas; o visitor do router
+vanilla e chunks completos não são cobertos. Detalhes em [NOISE_CHUNK.md](NOISE_CHUNK.md).
+SHA-256: `e1cf1e6dab02e1e87637454bb209bf54936620decfb5dbb43181aaf73d36bccc`.
+Testes nativos adicionais verificam arenas/buffers insuficientes, canários,
+overflow de geometria e workspace da ponte de DensityGraph.
+Total das onze suítes que invocam Minecraft: **941.623 resultados coincidentes**.
 
 `make float-parity` é uma suíte adicional de **expressões Java 21 próprias**,
 sem invocar métodos Minecraft. Compara a camada nativa de aritmética binary32:
@@ -146,9 +157,9 @@ SHA-256: `978ca2607173016ae864b917c10831d049cd63c8fbebb082642dda996ed98ccb`.
 O escopo fica em `.local/float-parity/report.json`. Esses registros
 não são contabilizados como chamadas a mecânicas Minecraft.
 
-`tools/check_ee_float.py` audita cinco objetos EE e quatro helpers binary64
+`tools/check_ee_float.py` audita seis objetos EE e quatro helpers binary64
 linkados. Rejeita aritmética, conversão e comparação single-precision na camada
-de precisão/spline/End, permitindo apenas movimentos de registradores. A camada
+de precisão/spline/End/NoiseChunk, permitindo apenas movimentos de registradores. A camada
 usa intermediários binary64, arredondamento explícito por bits para binary32 e
 comparações por bits. A auditoria verifica geração de código; runtime e custo
 no console ainda precisam de medição.
@@ -162,8 +173,9 @@ Build EE concluído com ps2dev v2.0.0 / GCC 15.2.0. ELF 32-bit little-endian MIP
 linkado com o startup/linkfile do PS2SDK. Essa evidência é **compilação**, não
 execução ou medição de FPS. Tamanhos text/data/bss e linker map estão nos artifacts
 e logs do build, sem representar o orçamento de um jogo completo. O código de
-núcleo ainda deve ser medido no EE. O ELF executa quinze probes de referência;
-o resultado esperado é máscara `0x7fff`, incluindo compatibilidade binary32.
+núcleo ainda deve ser medido no EE. O ELF executa dezesseis probes de referência;
+o resultado esperado é máscara `0xffff`, incluindo compatibilidade binary32 e
+interpolação/cache de NoiseChunk.
 Sua aprovação verifica apenas esses vetores pequenos, não toda a suíte de host.
 
 ## O que os testes ainda não provam

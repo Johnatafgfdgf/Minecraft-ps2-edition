@@ -6,7 +6,7 @@ import re
 import shutil
 import subprocess
 
-OBJECTS=('java_float','density_spline','simplex_noise','density_graph','density_pack')
+OBJECTS=('java_float','density_spline','simplex_noise','density_graph','density_pack','noise_chunk')
 HELPERS=('__adddf3','__muldf3','__divdf3','__extendsfdf2')
 INSTRUCTION=re.compile(r'^\s*[0-9a-f]+:\s+[0-9a-f]+\s+([a-z0-9.]+)',re.MULTILINE)
 
