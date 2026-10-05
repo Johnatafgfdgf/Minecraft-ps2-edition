@@ -16,7 +16,7 @@ OPS = dict(zip(('constant','y_clamped_gradient','add','mul','min','max','clamp',
 OPS.update(dict(zip(('noise','shift','shift_a','shift_b','shifted_noise','old_blended_noise',
                      'interpolated','flat_cache','cache_2d','cache_once','cache_all_in_cell',
                      'blend_alpha','blend_offset','blend_density','reference','beardifier'),range(17,33))))
-OPS.update(weird_scaled_sampler=33,end_islands=34,spline=35)
+OPS.update(weird_scaled_sampler=33,end_islands=34,spline=35,spline_constant=36)
 ROUTER_FIELDS = ('barrier','fluid_level_floodedness','fluid_level_spread','lava','temperature',
                  'vegetation','continents','erosion','depth','ridges','initial_density_without_jaggedness',
                  'final_density','vein_toggle','vein_ridged','vein_gap')
@@ -106,7 +106,7 @@ class DensityCompiler:
             return self.references[name]
         if not isinstance(value,dict) or 'type' not in value: raise ValueError('Invalid density definition.')
         kind=resource_name(value['type'])
-        if not kind.startswith('minecraft:') or kind[10:] not in OPS or kind=='minecraft:reference':
+        if not kind.startswith('minecraft:') or kind[10:] not in OPS or kind in ('minecraft:reference','minecraft:spline_constant'):
             raise UnsupportedDensity(f'Unsupported {kind}; dependency: '+(' -> '.join(self.active) or '<router root>'))
         kind=kind[10:]
         if kind=='constant': return self.compile(value['argument'])
@@ -124,8 +124,9 @@ class DensityCompiler:
             return self.emit(kind,a=self.compile(value['argument']))
         if kind in ('blend_alpha','blend_offset','beardifier'): return self.emit(kind)
         if kind=='spline':
-            target=self.compile_spline(value['spline'])
-            return self.emit('reference',a=target) if self.nodes[target][0]==OPS['constant'] else target
+            if isinstance(value['spline'],(int,float)) and not isinstance(value['spline'],bool):
+                return self.emit('spline_constant',p0=single(value['spline']))
+            return self.compile_spline(value['spline'])
         if kind=='end_islands':
             key=('end',)
             if key not in self.resource_ids:
@@ -169,7 +170,7 @@ class DensityCompiler:
             start=resource_offset-HEADER.size+i*RESOURCE.size
             payload[start:start+RESOURCE.size]=RESOURCE.pack(r['kind'],name_offset,len(name),r['first'],amplitude_offset,len(r['amplitudes']),*r['parameters'])
         total=HEADER.size+len(payload)
-        return HEADER.pack(b'MCDG',2,2|int(legacy),len(self.nodes),root,len(self.resources),node_offset,resource_offset,total,zlib.crc32(payload),
+        return HEADER.pack(b'MCDG',3,2|int(legacy),len(self.nodes),root,len(self.resources),node_offset,resource_offset,total,zlib.crc32(payload),
                            len(self.splines),len(self.points),spline_offset,point_offset)+payload
 
 

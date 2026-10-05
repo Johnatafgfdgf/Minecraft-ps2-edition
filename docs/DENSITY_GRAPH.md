@@ -157,7 +157,7 @@ faltou. Não gerar uma substituição zero para uma função desconhecida.
 
 ## Pipeline implementada
 
-`tools/compile_density_graph.py --inventory` gera **MCDG v2** little-endian com
+`tools/compile_density_graph.py --inventory` gera **MCDG v3** little-endian com
 header de 56 bytes, nós de 40 bytes no disco, descritores de ruídos de 64 bytes,
 descritores de spline e pontos de 16 bytes cada, nomes e amplitudes em pools.
 Locations/derivatives são binary32; IDs de coordenadas e valores preservam as
@@ -170,7 +170,11 @@ Foram convertidos **todos os 105 campos** dos sete noise settings vanilla. Somam
 4.753 nós, 819 splines, 3.210 pontos e 280.752 bytes nos packs independentes.
 Esses totais somam os arquivos de todas as configurações e não são um orçamento
 de RAM simultânea; também não incluem os pools de ruído construídos por seed.
-MCDG v2 substitui o formato privado v1: regenere os packs com o conversor.
+MCDG v3 preserva uma spline constante como tipo próprio (opcode 36), com
+valor/bounds binary32 promovidos a double e fill via provider direto. Usar uma
+Constant comum ou HolderHolder nessa posição muda as factories e o visitor.
+O leitor aceita v2 para pontos, mas `supports_chunk_binding()` exige v3:
+regenere packs antigos antes de ligar os caches automaticamente.
 O compilador continua rejeitando funções futuras desconhecidas explicitamente.
 
 `make density-data-parity` lê esses packs pelo leitor nativo e compara **630

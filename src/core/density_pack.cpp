@@ -70,11 +70,12 @@ bool DensityPack::amplitude(uint32_t resource_index, uint32_t index, double& res
 }
 bool DensityPack::bind(const void* data, size_t size) noexcept {
     bytes_ = nullptr; nodes_ = resources_ = root_ = node_offset_ = resource_offset_ = 0; legacy_ = false;
-    splines_=points_=spline_offset_=point_offset_=0;
+    splines_=points_=spline_offset_=point_offset_=version_=0;
     if (!data || size < 56 || size > std::numeric_limits<uint32_t>::max() || std::memcmp(data,"MCDG",4) != 0) return false;
     bytes_ = static_cast<const uint8_t*>(data);
-    auto reject = [this]() noexcept { bytes_ = nullptr; nodes_ = resources_ = splines_ = points_ = 0; return false; };
-    if (u32(4) != 2 || (u32(8) != 2 && u32(8) != 3) || u32(32) != size || crc32(bytes_ + 56, size - 56) != u32(36)) return reject();
+    auto reject = [this]() noexcept { bytes_ = nullptr; nodes_ = resources_ = splines_ = points_ = version_ = 0; return false; };
+    version_=u32(4);
+    if ((version_ != 2 && version_ != 3) || (u32(8) != 2 && u32(8) != 3) || u32(32) != size || crc32(bytes_ + 56, size - 56) != u32(36)) return reject();
     nodes_ = u32(12); root_ = u32(16); resources_ = u32(20); node_offset_ = u32(24); resource_offset_ = u32(28); legacy_ = u32(8) == 3;
     splines_=u32(40);points_=u32(44);spline_offset_=u32(48);point_offset_=u32(52);
     if (!nodes_ || root_ >= nodes_ || node_offset_ != 56 || nodes_ > (size - 56) / 40) return reject();
@@ -116,7 +117,7 @@ bool DensityPack::bind(const void* data, size_t size) noexcept {
     for (uint32_t i = 0; i < nodes_; ++i) {
         DensitySpec s; spec(i,s); const unsigned op = unsigned(s.op);
         const size_t offset = node_offset_ + size_t(i) * 40;
-        if (bytes_[offset + 1] || bytes_[offset + 2] || bytes_[offset + 3] || op > 35 || (op >= 14 && op <= 16)
+        if (bytes_[offset + 1] || bytes_[offset + 2] || bytes_[offset + 3] || op > (version_==3?36u:35u) || (op >= 14 && op <= 16)
             || !std::isfinite(s.p0) || !std::isfinite(s.p1)) return reject();
         unsigned arity = op >= 2 && op <= 5 ? 2 : op == 7 || op == 21 ? 3 : op == 6 || (op >= 8 && op <= 13) || (op >= 23 && op <= 27) || op == 30 || op == 31 || op == 33 || op == 35 ? 1 : 0;
         const uint32_t references[] = {s.a,s.b,s.c};

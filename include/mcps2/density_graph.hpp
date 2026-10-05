@@ -15,7 +15,7 @@ enum class DensityOp : uint8_t {
     add_constant, multiply_constant, noise, shift, shift_a, shift_b, shifted_noise, blended_noise,
     interpolated, flat_cache, cache_2d, cache_once, cache_all_in_cell,
     blend_alpha, blend_offset, blend_density, reference, beardifier_marker,
-    weird_scaled_sampler, end_islands, spline
+    weird_scaled_sampler, end_islands, spline, spline_constant
 };
 enum class DensityResult : uint8_t { ok, full, invalid_reference, invalid_operation, workspace_full, inactive, invalid_index };
 struct DensityContext { int32_t x, y, z; const NoiseChunk* owner = nullptr; };
@@ -62,6 +62,9 @@ public:
                  const DensityNoiseBinding* noises = nullptr, size_t noise_count = 0,
                  const DensitySpline* splines = nullptr, size_t spline_count = 0) noexcept;
     DensityResult append(const DensitySpec& spec, DensityId& id) noexcept;
+    // mapAll preserves MulOrAdd's class/argument after transforming its child;
+    // rerunning the binary factory here could exchange two constant operands.
+    DensityResult append_transformed(const DensitySpec& spec, DensityId& id) noexcept;
     DensityResult sample(DensityId root, DensityContext context,
                          DensityFrame* workspace, size_t capacity, double& value) const noexcept;
     // fillArray has a distinct traversal from repeated point sampling. All
@@ -73,6 +76,12 @@ public:
                        double* temporary, size_t temporary_capacity) const noexcept;
     const DensityNode* node(DensityId id) const noexcept { return id < count_ ? nodes_ + id : nullptr; }
     size_t size() const noexcept { return count_; }
+    const DensityInput* inputs() const noexcept { return inputs_; }
+    size_t input_count() const noexcept { return input_count_; }
+    const DensityNoiseBinding* noises() const noexcept { return noises_; }
+    size_t noise_count() const noexcept { return noise_count_; }
+    const DensitySpline* splines() const noexcept { return splines_; }
+    size_t spline_count() const noexcept { return spline_count_; }
     size_t required_frames(DensityId root) const noexcept { return node(root) ? nodes_[root].depth : 0; }
     size_t required_temporary_arrays(DensityId root) const noexcept { return node(root) ? nodes_[root].temporary_arrays : 0; }
 private:

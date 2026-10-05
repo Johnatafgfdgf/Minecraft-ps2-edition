@@ -75,7 +75,7 @@ class DensityToolsTests(unittest.TestCase):
         root=compiler.compile({'type':'minecraft:spline','spline':{'coordinate':-0.5,'points':[
             {'location':-1,'derivative':0,'value':inner},{'location':1,'derivative':0.1,'value':-0.0}]}})
         pack=compiler.pack(root,False);self.validate(pack,True)
-        self.assertEqual(struct.unpack_from('<I',pack,4)[0],2)
+        self.assertEqual(struct.unpack_from('<I',pack,4)[0],3)
         self.assertEqual(compiler.nodes[2][6],struct.unpack('<f',struct.pack('<f',0.1))[0])
         self.assertEqual(struct.pack('<f',compiler.points[0][1]),struct.pack('<f',-0.0))
         spline_offset,point_offset=struct.unpack_from('<II',pack,48)
@@ -91,7 +91,15 @@ class DensityToolsTests(unittest.TestCase):
                       {'coordinate':0,'points':[{'location':0,'derivative':1e300,'value':0}]}):
             with self.assertRaises(ValueError): DensityCompiler({},{}).compile_spline(value)
         compiler=DensityCompiler({},{});root=compiler.compile({'type':'minecraft:spline','spline':-0.0})
-        self.assertEqual([n[0] for n in compiler.nodes],[0,31]);self.validate(compiler.pack(root,False),True)
+        self.assertEqual([n[0] for n in compiler.nodes],[36]);self.validate(compiler.pack(root,False),True)
+
+    def test_v2_is_readable_but_rejects_new_function_types(self):
+        compiler=DensityCompiler({},{});root=compiler.compile(-0.0)
+        pack=bytearray(compiler.pack(root,False));struct.pack_into('<I',pack,4,2)
+        self.validate(pack,True)
+        compiler=DensityCompiler({},{});root=compiler.compile({'type':'minecraft:spline','spline':0})
+        pack=bytearray(compiler.pack(root,False));struct.pack_into('<I',pack,4,2)
+        self.validate(pack,False)
 
     def test_end_resource_is_shared_and_rejects_other_noise_kind(self):
         compiler=DensityCompiler({},{});a=compiler.compile({'type':'minecraft:end_islands'})

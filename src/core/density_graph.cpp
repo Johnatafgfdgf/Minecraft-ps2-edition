@@ -78,7 +78,7 @@ DensityGraph::DensityGraph(DensityNode* nodes, size_t capacity, const DensityInp
 DensityResult DensityGraph::append(const DensitySpec& spec, DensityId& id) noexcept {
     if (count_ >= capacity_ || count_ >= std::numeric_limits<uint32_t>::max()) return DensityResult::full;
     // Specialized opcodes are created here after the original factory's bound calculation.
-    if (spec.op > DensityOp::spline || spec.op == DensityOp::add_constant || spec.op == DensityOp::multiply_constant
+    if (spec.op > DensityOp::spline_constant || spec.op == DensityOp::add_constant || spec.op == DensityOp::multiply_constant
         || (spec.op == DensityOp::weird_scaled_sampler && spec.to_y != 0 && spec.to_y != 1))
         return DensityResult::invalid_operation;
     const unsigned arity = children(spec.op);
@@ -111,6 +111,7 @@ DensityResult DensityGraph::append(const DensitySpec& spec, DensityId& id) noexc
     }
     DensityNode node{spec, 0, 0, depth};
     if (spec.op == DensityOp::constant) node.minimum = node.maximum = spec.p0;
+    else if (spec.op == DensityOp::spline_constant) node.minimum = node.maximum = node.spec.p0 = double(java_float::round(spec.p0));
     else if (spec.op == DensityOp::y_gradient) {
         node.minimum = java_min(spec.p0, spec.p1); node.maximum = java_max(spec.p0, spec.p1);
     } else if (spec.op == DensityOp::input) {
@@ -191,6 +192,23 @@ DensityResult DensityGraph::append(const DensitySpec& spec, DensityId& id) noexc
     return DensityResult::ok;
 }
 
+DensityResult DensityGraph::append_transformed(const DensitySpec& spec, DensityId& id) noexcept {
+    if (spec.op != DensityOp::add_constant && spec.op != DensityOp::multiply_constant) return append(spec,id);
+    if (count_ >= capacity_ || count_ >= UINT32_MAX) return DensityResult::full;
+    if (spec.a >= count_) return DensityResult::invalid_reference;
+    const auto& child=nodes_[spec.a];
+    if (child.depth==UINT32_MAX) return DensityResult::full;
+    DensityNode node{spec,0,0,child.depth+1,child.temporary_arrays};
+    if (spec.op==DensityOp::add_constant) {
+        node.minimum=child.minimum+spec.p0; node.maximum=child.maximum+spec.p0;
+    } else if (spec.p0>=0) {
+        node.minimum=child.minimum*spec.p0; node.maximum=child.maximum*spec.p0;
+    } else {
+        node.minimum=child.maximum*spec.p0; node.maximum=child.minimum*spec.p0;
+    }
+    id=uint32_t(count_);nodes_[count_++]=node;return DensityResult::ok;
+}
+
 DensityResult DensityGraph::sample(DensityId root, DensityContext context, DensityFrame* stack,
                                    size_t capacity, double& output) const noexcept {
     if (root >= count_) return DensityResult::invalid_reference;
@@ -200,6 +218,7 @@ DensityResult DensityGraph::sample(DensityId root, DensityContext context, Densi
         auto& frame = stack[top - 1]; const auto& node = nodes_[frame.node]; const auto& s = node.spec;
         if (frame.stage == 0) {
             if (s.op == DensityOp::constant) { value = s.p0; --top; continue; }
+            if (s.op == DensityOp::spline_constant) { value = double(java_float::round(s.p0)); --top; continue; }
             if (s.op == DensityOp::y_gradient) { value = gradient(s, context.y); --top; continue; }
             if (s.op == DensityOp::input) {
                 const auto& input=inputs_[s.a];

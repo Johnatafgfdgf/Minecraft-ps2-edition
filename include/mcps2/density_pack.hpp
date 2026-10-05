@@ -11,8 +11,8 @@ struct DensityResourceView {
     BlendedNoiseParameters blended{};
 };
 struct DensitySplineView { uint32_t coordinate = 0, first_point = 0, point_count = 0; };
-// Read-only, explicitly little-endian MCDG v2. Binds externally owned bytes.
-// Format domain is unwrapped point sampling, not NoiseChunk evaluation.
+// Read-only, explicitly little-endian MCDG v2/v3. Binds external bytes.
+// v3 preserves function types needed by NoiseChunkGraph; v2 is point-only.
 class DensityPack {
 public:
     bool bind(const void* bytes, size_t size) noexcept;
@@ -27,6 +27,7 @@ public:
     uint32_t spline_count() const noexcept { return splines_; }
     uint32_t point_count() const noexcept { return points_; }
     bool legacy() const noexcept { return legacy_; }
+    bool supports_chunk_binding() const noexcept { return version_ == 3; }
 private:
     uint32_t u32(size_t offset) const noexcept;
     double real(size_t offset) const noexcept;
@@ -34,6 +35,7 @@ private:
     const uint8_t* bytes_ = nullptr;
     uint32_t nodes_ = 0, resources_ = 0, root_ = 0, node_offset_ = 0, resource_offset_ = 0;
     bool legacy_ = false;
+    uint32_t version_ = 0;
     uint32_t splines_ = 0, points_ = 0, spline_offset_ = 0, point_offset_ = 0;
 };
 }
