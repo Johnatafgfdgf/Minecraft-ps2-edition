@@ -2,6 +2,7 @@
 #include "mcps2/worldgen_noise.hpp"
 #include "mcps2/simplex_noise.hpp"
 #include "density_batch_fixture.hpp"
+#include "noise_graph_fixture.hpp"
 #include <fstream>
 #include <iostream>
 #include <iomanip>
@@ -40,7 +41,7 @@ int main(int argc,char** argv) {
     std::string command;
     while (std::cin>>command) {
         std::string setting,seed,path;unsigned field,samples;
-        if (command!="density-data" && command!="density-data-batch") return 2;
+        if (command!="density-data" && command!="density-data-batch" && command!="density-data-chunk") return 2;
         std::cin>>setting>>field>>seed>>samples>>path;
         std::ifstream file(decode_path(path),std::ios::binary);
         if (!file || !std::cin) return 2;
@@ -77,6 +78,11 @@ int main(int argc,char** argv) {
         for (uint32_t i=0;i<pack.node_count();++i) {
             DensitySpec spec;DensityId id;
             if (!pack.spec(i,spec) || graph.append(spec,id)!=DensityResult::ok || id!=i) return 3;
+        }
+        if (command=="density-data-chunk") {
+            if (!pack.supports_chunk_binding()) return 3;
+            uint64_t trace=0;observe_noise_graph(graph,pack.root(),field,trace,emit);
+            ++case_index;continue;
         }
         const auto* root=graph.node(pack.root());
         emit("density-data-bounds "+hex(bits(root->minimum))+" "+hex(bits(root->maximum)));

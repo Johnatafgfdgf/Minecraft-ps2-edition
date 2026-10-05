@@ -1,4 +1,5 @@
 #include "mcps2/boot_checks.hpp"
+#include "mcps2/noise_chunk_graph.hpp"
 #include "mcps2/noise_chunk.hpp"
 #include "mcps2/random.hpp"
 #include "mcps2/improved_noise.hpp"
@@ -154,6 +155,31 @@ uint32_t run_boot_checks() {
             NoiseChunkContext c;double value=0;
             if (matched && bulk_chunk.cell_provider().for_index(0,c)==NoiseChunkResult::ok
                 && f.sample(f.state,c,value)==NoiseChunkResult::ok && value==14) mask|=65536;
+        }
+    }
+    // Execute automatic holder unwrapping and equal-marker sharing using only
+    // fixed arenas on the console. The full visitor suite stays host-side.
+    DensityNode visitor_source_nodes[5];DensityGraph visitor_source(visitor_source_nodes,5);
+    DensityId visitor_root;
+    if (visitor_source.append({DensityOp::y_gradient,0,0,0,0,8,0,8},visitor_root)==DensityResult::ok
+        && visitor_source.append({DensityOp::reference,0},visitor_root)==DensityResult::ok
+        && visitor_source.append({DensityOp::cache_once,1},visitor_root)==DensityResult::ok
+        && visitor_source.append({DensityOp::cache_once,0},visitor_root)==DensityResult::ok
+        && visitor_source.append({DensityOp::add,2,3},visitor_root)==DensityResult::ok) {
+        DensityNode mapped_nodes[5];DensityInput mapped_inputs[5];NoiseGraphCache plans[5];
+        DensityId memo[5];NoiseGraphVisit visits[5];NoiseGraphKey keys[5];uint32_t slots[16];
+        NoiseGraphArena arena{mapped_nodes,5,mapped_inputs,5,plans,5,memo,5,visits,5,keys,5,slots,16};
+        NoiseCache entries[1];NoiseChunk automatic_chunk({0,8,4,8,1,0,0},entries,1);
+        NoiseChunkGraph visitor(visitor_source,automatic_chunk,arena);
+        DensityFrame points[8];DensityBatchFrame batches[8];double cache_values[128],temporary[128],output[128];
+        if (visitor.prepare(visitor_root,128)==DensityResult::ok && visitor.requirements().caches==1
+            && visitor.mapped(2)==visitor.mapped(3)
+            && visitor.activate({cache_values,128,points,8,batches,8,temporary,128})==NoiseChunkResult::ok) {
+            const auto f=visitor.function();bool matched=f.fill(f.state,output,128,automatic_chunk.cell_provider())==NoiseChunkResult::ok;
+            for (unsigned i=0;i<128 && matched;++i) matched=output[i]==2.0*double(7-i/16);
+            NoiseChunkContext c;double value=0;
+            if (matched && automatic_chunk.cell_provider().for_index(0,c)==NoiseChunkResult::ok
+                && f.sample(f.state,c,value)==NoiseChunkResult::ok && value==14) mask|=131072;
         }
     }
     return mask;

@@ -23,7 +23,8 @@ O caminho estudado é `DensityFunction.compute(FunctionContext)` e as factories
 usadas para construir seu grafo. O visitor de ligação de ruídos foi analisado na
 etapa descrita abaixo. Os wrappers de `NoiseChunk` são descritos em
 [NOISE_CHUNK.md](NOISE_CHUNK.md). O caminho `fillArray` também foi portado e
-comparado; o visitor automático de integração ao router continua pendente.
+comparado; o visitor automático por campo agora é descrito em
+[NOISE_CHUNK.md](NOISE_CHUNK.md). A ligação compartilhada do router permanece pendente.
 
 ## Regras numéricas e de avaliação
 
@@ -116,8 +117,9 @@ ainda são pontos com Blender vazio, não chunks de blocos.
 identidade do proprietário, fill separado e erros de estado/índice. A ponte
 `NoiseChunkDensityField` executa agora o fill especializado do grafo. Fixtures
 comparam graphs de add/mul/min/max/range sobre caches originais, inclusive arrays
-maiores que a célula. A ligação automática de markers/holders e deduplicação do
-router vanilla ainda precisam do visitor analisado no original.
+maiores que a célula. `NoiseChunkGraph` aplica markers/holders e compartilha
+wrappers automaticamente. Os 105 campos vanilla foram comparados individualmente
+com o visitor original; a ligação compartilhada dos 15 campos ainda é pendente.
 
 ## Ligação de ruídos e dados — análise
 

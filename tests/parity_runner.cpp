@@ -10,6 +10,7 @@
 #include "mcps2/java_float.hpp"
 #include "mcps2/java_math.hpp"
 #include "density_batch_fixture.hpp"
+#include "noise_graph_fixture.hpp"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -99,7 +100,7 @@ double density_probe(const void* state,mcps2::DensityContext context) noexcept {
     *p.trace=(*p.trace*0x100000001b3ULL)^(p.id+1);
     return context.y<p.threshold?p.low:p.high;
 }
-void density(bool batch=false) {
+void density(bool batch=false,bool chunk=false) {
     using namespace mcps2;
     unsigned count,root,samples;std::cin>>count>>root>>samples;
     std::vector<DensityNode> nodes(count);std::vector<DensityInput> inputs(count);
@@ -124,7 +125,10 @@ void density(bool batch=false) {
         }
     }
     // Bindings are installed before their corresponding node is appended; the arena never moves.
-    DensityGraph graph(nodes.data(),count,inputs.data(),count,nullptr,0,splines.data(),splines.size());
+    EndIslandDensity island;
+    for (const auto& spec:specs) if (spec.op==DensityOp::end_islands) { island.initialize(0);break; }
+    DensityNoiseBinding binding{nullptr,nullptr,&island};
+    DensityGraph graph(nodes.data(),count,inputs.data(),count,&binding,1,splines.data(),splines.size());
     for (unsigned i=0;i<count;++i) {
         DensitySpec s=specs[i];
         if (s.op==DensityOp::input) {
@@ -133,8 +137,9 @@ void density(bool batch=false) {
         DensityId id;
         if (graph.append(s,id)!=DensityResult::ok || id!=i) std::abort();
         const auto* n=graph.node(id);
-        emit("density-bounds "+std::to_string(i)+" "+hex(density_bits(n->minimum))+" "+hex(density_bits(n->maximum)));
+        if (!chunk) emit("density-bounds "+std::to_string(i)+" "+hex(density_bits(n->minimum))+" "+hex(density_bits(n->maximum)));
     }
+    if (chunk) { observe_noise_graph(graph,root,samples,trace,emit);return; }
     std::vector<DensityFrame> frames(graph.required_frames(root));
     if (batch) {
         std::vector<DensityBatchFrame> bulk(frames.size());
@@ -302,6 +307,8 @@ int main() {
             std::string seed;unsigned count;std::cin>>seed>>count;end_islands(parse_hex(seed),count);
         } else if (command=="density") {
             density();
+        } else if (command=="density-chunk") {
+            density(false,true);
         } else if (command=="density-batch") {
             density(true);
         } else if (command=="blended") {

@@ -47,7 +47,7 @@ executar os métodos originais, com todas as bibliotecas do bundle verificadas.
 ## Testes executados — 2026-10-04
 
 `make test`: verificações nativas de limites, dívidas do relógio, overflow,
-armazenamento, capacidade, deduplicação, ordem e dezessete probes de boot; 17 testes Python da pipeline
+armazenamento, capacidade, deduplicação, ordem e dezoito probes de boot; 18 testes Python da pipeline
 e proteção dos inputs. `make parity`: **1.313 cenários / 75.908 resultados iguais**
 ao JAR original, incluindo sequences intercaladas, seeds negativas/extremas,
 reseed, forks, limites com rejeição, coordenadas negativas/extremas, layout bruto
@@ -117,11 +117,11 @@ núcleo nativo e ligados a seis seeds. A referência cria os próprios registrie
 noises: não usa os nós convertidos. Isso compara a conversão, o leitor, a ligação
 de seeds e os valores/bounds dos campos no domínio de SinglePointContext.
 SHA-256: `2a979e39f2f9b6c51720cff2979c89c8cc7b97b086e7da3dc24d74f9d94d9225`.
-Inclui splines, weird_scaled_sampler e end_islands. Os packs MCDG v2 armazenam
+Inclui splines, weird_scaled_sampler e end_islands. Os packs MCDG v3 armazenam
 locations/derivatives em binary32 e referências dos valores em pools privados.
 Markers mantêm tipos e comportamento de ponto. Os wrappers/interpolação de
-NoiseChunk são verificados separadamente abaixo; seu visitor de integração ao
-router vanilla e blending entre versões de saves ainda estão pendentes.
+NoiseChunk e o visitor automático por campo são verificados separadamente abaixo.
+Router compartilhado e blending entre versões de saves ainda estão pendentes.
 `make density-spline-parity`: **416 cenários / 32.073 observações iguais** às
 factories de CubicSpline e ao compute/bounds da DensityFunctions.Spline original.
 Os grafos sintéticos exercitam extrapolação, um ponto, knots repetidos, derivadas
@@ -166,7 +166,27 @@ vanilla e chunks completos não são cobertos. Detalhes em [NOISE_CHUNK.md](NOIS
 SHA-256: `36442d77de29fe811a037a2ebdd84396355d65e41c9d397d5ef42ed036309502`.
 Testes nativos adicionais verificam arenas/buffers insuficientes, canários,
 overflow de geometria e workspace da ponte de DensityGraph.
-Total das treze suítes que invocam Minecraft: **1.386.745 resultados coincidentes**.
+`make density-chunk-parity`: **272 cenários / 151.776 registros iguais** ao
+mapAll/wrap do JAR: tipos, holders, factories após transformação, records iguais,
+identidade de objetos End e arrays de spline, cinco caches aninhados, registro,
+limites, valores, arrays, contadores e trace de folhas. As fixtures incluem
+markers inalcançáveis e 128 grafos aleatórios. SHA-256:
+`6910b01c092e6cdef9b8c3a7a2d3f36e90a56e6353727b168551254259862b75`.
+
+`make density-data-chunk-parity`: **630 cenários / 351.540 registros iguais**.
+Todos os 105 campos vanilla, seis seeds, wrappers ligados automaticamente pelo
+nativo e visitor original independente no oracle. Compara limites, contagens
+por tipo de cache, valores binary64 e estados/épocas de construção, sampling,
+fillArray e ciclo de interpolação. O oracle não lê os packs nativos. SHA-256:
+`7b34c7b34316008d8f2e710564ad57b7bbcd938eac842311344d879b787ca337`.
+Cada root usa um chunk de teste independente com EmptyBlender/beardifier vazio:
+a ligação compartilhada do router e emissão de blocos ainda não estão cobertas.
+Arenas insuficientes são recusadas antes da construção de FlatCache; testes
+nativos verificam essa fronteira, sharing, tipos e source graph preservado.
+Os testes de recursos do visitor passaram também com ASan/UBSan no host,
+com leak checking desativado pela restrição local já descrita.
+
+Total das quinze suítes que invocam Minecraft: **1.890.061 resultados coincidentes**.
 
 `make float-parity` é uma suíte adicional de **expressões Java 21 próprias**,
 sem invocar métodos Minecraft. Compara a camada nativa de aritmética binary32:
@@ -177,7 +197,7 @@ SHA-256: `978ca2607173016ae864b917c10831d049cd63c8fbebb082642dda996ed98ccb`.
 O escopo fica em `.local/float-parity/report.json`. Esses registros
 não são contabilizados como chamadas a mecânicas Minecraft.
 
-`tools/check_ee_float.py` audita seis objetos EE e quatro helpers binary64
+`tools/check_ee_float.py` audita sete objetos EE e quatro helpers binary64
 linkados. Rejeita aritmética, conversão e comparação single-precision na camada
 de precisão/spline/End/NoiseChunk, permitindo apenas movimentos de registradores. A camada
 usa intermediários binary64, arredondamento explícito por bits para binary32 e
@@ -193,9 +213,12 @@ Build EE concluído com ps2dev v2.0.0 / GCC 15.2.0. ELF 32-bit little-endian MIP
 linkado com o startup/linkfile do PS2SDK. Essa evidência é **compilação**, não
 execução ou medição de FPS. Tamanhos text/data/bss e linker map estão nos artifacts
 e logs do build, sem representar o orçamento de um jogo completo. O código de
-núcleo ainda deve ser medido no EE. O ELF executa dezessete probes pequenos;
-o resultado esperado é máscara `0x1ffff`, incluindo compatibilidade binary32,
-interpolação/cache de NoiseChunk e grafo em lote sobre um CacheOnce compartilhado.
+núcleo ainda deve ser medido no EE. O ELF executa dezoito probes pequenos;
+o resultado esperado é máscara `0x3ffff`, incluindo compatibilidade binary32,
+interpolação/cache de NoiseChunk, grafo em lote sobre um CacheOnce compartilhado
+e ligação automática de holders/markers. No build local, text/data/bss somam
+306.092 bytes; o frame do probe ocupa 32.752 bytes, dentro da stack padrão de
+128 KiB do PS2SDK. Isso não inclui os buffers de um mundo jogável nem mede FPS.
 Sua aprovação verifica apenas esses vetores pequenos, não toda a suíte de host.
 
 ## O que os testes ainda não provam

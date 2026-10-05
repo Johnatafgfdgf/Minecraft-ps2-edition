@@ -65,6 +65,8 @@ make density-data-parity
 make density-batch-parity
 make density-data-batch-parity
 make noise-chunk-parity
+make density-chunk-parity
+make density-data-chunk-parity
 make check-public
 ```
 
@@ -74,7 +76,7 @@ originais. Entradas, resultados e checksums ficam em `.local/parity/`,
 `.local/registry-parity/`, `.local/noise-parity/`, `.local/simplex-parity/`, `.local/float-parity/`, `.local/factory-parity/`,
 `.local/octave-parity/`, `.local/blended-parity/`, `.local/density-parity/`, `.local/density-spline-parity/` e
 `.local/density-data-parity/`, `.local/density-batch-parity/`, `.local/density-data-batch-parity/`
-e `.local/noise-chunk-parity/`. Grafos MCDG e inventário ficam em `.local/density-data/`. Uma falha
+e `.local/noise-chunk-parity/`, `.local/density-chunk-parity/`, `.local/density-data-chunk-parity/`. Grafos MCDG e inventário ficam em `.local/density-data/`. Uma falha
 na referência não vira aprovação silenciosa; o comando falha.
 
 ## Console / emulador
@@ -86,12 +88,13 @@ os módulos ROM `XSIO2MAN`/`XPADMAN`, com buffer DMA alinhado a 64 bytes e esper
 não bloqueante por conexão. Módulos `sio2man`/`padman` já residentes são reutilizados
 sem reset do IOP.
 
-A tela e o stdout devem mostrar `Reference numeric vectors: PASS (1ffff / 1ffff)`.
-Os dezessete bits verificam Legacy, Xoroshiro, os dois wrappers WorldgenRandom,
+A tela e o stdout devem mostrar `Reference numeric vectors: PASS (3ffff / 3ffff)`.
+Os dezoito bits verificam Legacy, Xoroshiro, os dois wrappers WorldgenRandom,
 ImprovedNoise, factories/hash, PerlinNoise, NormalNoise, BlendedNoise, um grafo
 de densidade, a ligação do clima Legacy, Simplex 2D, ilhas do End, spline e
 compatibilidade binary32, interpolação/cache de NoiseChunk e avaliação em lote
-de um grafo com input CacheOnce compartilhado, usando vetores pequenos.
+de um grafo com input CacheOnce compartilhado e ligação automática de holders/markers
+compartilhados, usando vetores pequenos.
 Os vetores de regras vêm do JAR; os vetores da camada binary32 vêm de expressões
 Java 21 próprias. Uma máscara diferente
 indica divergência no target; preserve o valor ao reportar o boot. Esse probe
@@ -99,7 +102,7 @@ não demonstra geração de mundo completa nem valida toda a suíte no console.
 
 Depois de `make ps2`, execute `python3 tools/check_ee_float.py` com o EE toolchain
 no PATH. O CI também exige essa auditoria: os objetos de precisão, spline, End,
-grafo, leitor e NoiseChunk e os helpers binary64 verificados devem conservar o caminho sem
+grafo, leitor, NoiseChunk e seu visitor nativo, além dos helpers binary64 verificados devem conservar o caminho sem
 instruções single-precision de cálculo/comparação. Isso não substitui execução
 ou medição de custo no equipamento.
 

@@ -5,7 +5,7 @@ import java.lang.reflect.*;
 import java.util.*;
 import static mcps2.oracle.Oracle.*;
 
-final class NoiseChunkOracle {
+class NoiseChunkOracle {
     Object chunk;
     Object[] functions;
     long trace=0, samples=0, fills=0;
@@ -110,7 +110,7 @@ final class NoiseChunkOracle {
         for (double value:out) hash=(hash*0x100000001b3L)^Double.doubleToLongBits(value);
         emit("chunk-array "+label+" "+code+" "+h64(hash)+" "+h64(trace)+" "+samples+" "+fills);
     }
-    void construct() throws Exception {
+    void constructChunk() throws Exception {
         ensureBootstrap();
         if (settings==null) {
             Object lookup=staticCall("Vanilla.lookup","Vanilla",NONE);
@@ -132,6 +132,9 @@ final class NoiseChunkOracle {
         // Isolate authored probe wiring after the real constructor. This suite
         // tests wrapper/lifecycle semantics, not the vanilla router visitor.
         ((List<?>)field("interpolators").get(chunk)).clear();((List<?>)field("cellCaches").get(chunk)).clear();
+    }
+    void construct() throws Exception {
+        constructChunk();
         Object a=leaf(0),b=leaf(1);
         functions=new Object[10];
         functions[0]=wrap("ChunkOnce",a,true);functions[1]=wrap("ChunkColumn",b,true);

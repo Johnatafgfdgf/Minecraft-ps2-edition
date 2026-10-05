@@ -51,6 +51,9 @@ def oracle_symbols(classes):
         'ContextProvider':'world.level.levelgen.DensityFunction$ContextProvider','Getter':'core.HolderGetter',
         'ChunkInterpolated':'world.level.levelgen.NoiseChunk$NoiseInterpolator',
         'ChunkFlat':'world.level.levelgen.NoiseChunk$FlatCache','ChunkColumn':'world.level.levelgen.NoiseChunk$Cache2D',
+        'Visitor':'world.level.levelgen.DensityFunction$Visitor',
+        'Marker':'world.level.levelgen.DensityFunctions$Marker','MarkerType':'world.level.levelgen.DensityFunctions$Marker$Type',
+        'HolderHolder':'world.level.levelgen.DensityFunctions$HolderHolder',
         'ChunkOnce':'world.level.levelgen.NoiseChunk$CacheOnce','ChunkCell':'world.level.levelgen.NoiseChunk$CacheAllInCell',
     }
     for alias, name in names.items():
@@ -134,7 +137,8 @@ def oracle_symbols(classes):
         for key, signature in members.items():
             result[key] = classes[prefix + names[alias]]['members'][signature]
     extra = {
-        'Density': {'Density.fill':'void fillArray(double[],net.minecraft.world.level.levelgen.DensityFunction$ContextProvider)'},
+        'Visitor': {'Visitor.apply':'net.minecraft.world.level.levelgen.DensityFunction apply(net.minecraft.world.level.levelgen.DensityFunction)'},
+        'Density': {'Density.map':'net.minecraft.world.level.levelgen.DensityFunction mapAll(net.minecraft.world.level.levelgen.DensityFunction$Visitor)', 'Density.fill':'void fillArray(double[],net.minecraft.world.level.levelgen.DensityFunction$ContextProvider)'},
         'FunctionContext': {'Context.x':'int blockX()', 'Context.z':'int blockZ()'},
         'ContextProvider': {'Provider.index':'net.minecraft.world.level.levelgen.DensityFunction$FunctionContext forIndex(int)',
                             'Provider.direct':'void fillAllDirectly(double[],net.minecraft.world.level.levelgen.DensityFunction)'},
@@ -144,14 +148,14 @@ def oracle_symbols(classes):
         'Blender': {'Blender.empty':'net.minecraft.world.level.levelgen.blending.Blender empty()'},
         'BeardMarker': {'Beard.instance':'net.minecraft.world.level.levelgen.DensityFunctions$BeardifierMarker INSTANCE'},
         'ChunkGenerator': {'Chunk.fluid':'net.minecraft.world.level.levelgen.Aquifer$FluidPicker createFluidPicker(net.minecraft.world.level.levelgen.NoiseGeneratorSettings)'},
-        'Chunk': {'Chunk.initialize':'void initializeForFirstCellX()', 'Chunk.advance':'void advanceCellX(int)',
+        'Chunk': {'Chunk.wrap':'net.minecraft.world.level.levelgen.DensityFunction wrap(net.minecraft.world.level.levelgen.DensityFunction)', 'Chunk.initialize':'void initializeForFirstCellX()', 'Chunk.advance':'void advanceCellX(int)',
                   'Chunk.select':'void selectCellYZ(int,int)', 'Chunk.y':'void updateForY(int,double)',
                   'Chunk.x':'void updateForX(int,double)', 'Chunk.z':'void updateForZ(int,double)',
                   'Chunk.stop':'void stopInterpolation()', 'Chunk.swap':'void swapSlices()'},
     }
     for alias, members in extra.items():
         for key, signature in members.items(): result[key]=classes[prefix+names[alias]]['members'][signature]
-    for name in ('interpolators','cellCaches','sliceFillingContextProvider','cellStartBlockX','cellStartBlockY','cellStartBlockZ',
+    for name in ('wrapped','interpolators','cellCaches','sliceFillingContextProvider','cellStartBlockX','cellStartBlockY','cellStartBlockZ',
                  'inCellX','inCellY','inCellZ','arrayIndex','interpolationCounter','arrayInterpolationCounter','interpolating','fillingCell'):
         signature=next(k for k in classes[prefix+names['Chunk']]['members'] if k.endswith(' '+name))
         result['Chunk.field.'+name]=classes[prefix+names['Chunk']]['members'][signature]
@@ -159,6 +163,8 @@ def oracle_symbols(classes):
                              'vegetation','continents','erosion','depth','ridges','initialDensityWithoutJaggedness',
                              'finalDensity','veinToggle','veinRidged','veinGap')):
         result[f'Router.{i}']=classes[prefix+names['Router']]['members'][f'net.minecraft.world.level.levelgen.DensityFunction {name}()']
+    for op,name in enumerate(('Interpolated','FlatCache','Cache2D','CacheOnce','CacheAllInCell'),23):
+        result[f'Marker.kind.{op}']=classes[prefix+names['MarkerType']]['members'][f"net.minecraft.world.level.levelgen.DensityFunctions$Marker$Type {name}"]
     return result
 
 
@@ -331,6 +337,53 @@ def density_cases():
     return result
 
 
+def density_chunk_cases():
+    # Authored ASTs: equal records, signed zero/NaN, distinct spline arrays,
+    # holder-induced specialization, unreachable markers and nested caches.
+    def node(op,a=0,b=0,c=0,fy=0,ty=0,p0=0,p1=0): return [op,a,b,c,fy,ty,p0,p1]
+    result=[]
+    def encode(nodes,splines=()):
+        tokens=['density-chunk',str(len(nodes)),str(len(nodes)-1),str(len(result)%3)]
+        for n in nodes: tokens += [str(v) for v in n[:6]]+[struct.pack('>d',float(v)).hex() for v in n[6:]]
+        if splines:
+            tokens.append(str(len(splines)))
+            for points in splines:
+                tokens.append(str(len(points)))
+                for location,derivative,value in points: tokens += [struct.pack('>f',location).hex(),struct.pack('>f',derivative).hex(),str(value)]
+        result.append(' '.join(tokens))
+    for kind in range(23,28):
+        encode([node(1,fy=-65,ty=104,p0=-1.3,p1=2.7),node(1,fy=-65,ty=104,p0=-1.3,p1=2.7),
+                node(kind,a=1),node(kind,a=0),node(0,p0=0.5),node(27,a=4),node(2,a=3,b=2)])
+        encode([node(14,fy=-60,p0=-0.5,p1=0.5),node(kind),node(kind),node(2,a=1,b=2)])
+        for a,b in [(-0.0,0.0),(math.nan,math.nan),(0.1,0.1),(math.inf,math.inf)]:
+            encode([node(0,p0=a),node(0,p0=b),node(kind,a=0),node(kind,a=1),node(2,a=2,b=3)])
+        for value in (-0.0,0.0,-0.5,0.5,math.nan):
+            for op in (2,3):
+                encode([node(0,p0=value),node(31),node(0,p0=0.75),node(op,a=1,b=2),node(kind,a=3)])
+                encode([node(36,p0=value),node(0,p0=0.75),node(op,a=0,b=1),node(kind,a=2)])
+    # Same seed and numeric results do not make EndIslandDensityFunction
+    # objects equal. Repeated references to one object do share a wrapper.
+    for kind in range(23,28):
+        encode([node(34),node(34),node(kind,a=0),node(kind,a=0),node(kind,a=1),node(2,a=2,b=3),node(2,a=5,b=4)])
+    for kinds in ((26,24,23,26,27),(25,26,23,27,26),(23,25,24,27),(27,26,24,23,27)):
+        nodes=[node(14,fy=-60,p0=-0.75,p1=0.5)]
+        for k in kinds: nodes.append(node(k,a=len(nodes)-1))
+        encode(nodes)
+    for kind in range(23,28):
+        nodes=[node(14,fy=-60,p0=-0.5,p1=0.5),node(26),node(0,p0=-0.0),node(0,p0=0.25),
+            node(35,a=1,fy=0),node(35,a=1,fy=0),node(35,a=1,fy=1),
+            node(kind,a=4),node(kind,a=5),node(kind,a=6),node(2,a=7,b=8),node(2,a=10,b=9)]
+        encode(nodes,[[(0.0,-0.0,2),(1.0,0.1,3)],[(0.0,-0.0,2),(1.0,0.1,3)]])
+    rng=random.Random(0x1211_57524150)
+    for _ in range(128):
+        nodes=[node(14,fy=-60,p0=-0.75,p1=0.5),node(1,fy=-65,ty=104,p0=-1.3,p1=2.7),node(0,p0=0.125)]
+        for _ in range(rng.randrange(8,32)):
+            n=len(nodes);op=rng.choice([2,3,4,5,6,7,8,9,10,11,12,13,23,24,25,26,27,31,36])
+            nodes.append(node(op,a=rng.randrange(n),b=rng.randrange(n),c=rng.randrange(n),p0=-0.25,p1=0.5))
+        nodes.append(node(26,a=len(nodes)-1));encode(nodes)
+    return result
+
+
 def spline_cases():
     d64=lambda v:struct.pack('>d',float(v)).hex()
     f32=lambda v:struct.unpack('>f',struct.pack('>f',v))[0]
@@ -410,7 +463,7 @@ def main():
     parser.add_argument('--runner-arg',action='append',default=[])
     parser.add_argument('--cases',type=pathlib.Path)
     parser.add_argument('--output',type=pathlib.Path,default=PRIVATE/'parity')
-    parser.add_argument('--suite',choices=['core','noise','simplex','java-float','factories','octaves','blended','density','density-spline','density-data','noise-chunk','density-batch','density-data-batch'],default='core')
+    parser.add_argument('--suite',choices=['core','noise','simplex','java-float','factories','octaves','blended','density','density-spline','density-data','noise-chunk','density-batch','density-data-batch','density-chunk','density-data-chunk'],default='core')
     args=parser.parse_args()
     try:
         path,manifest,classes=load_reference(args.reference)
@@ -422,11 +475,13 @@ def main():
                     'blended':lambda:blended_cases(path,manifest),'density':density_cases,'density-spline':spline_cases,
                     'density-data':lambda:density_data_cases(path,manifest),'noise-chunk':noise_chunk_cases,
                     'density-batch':lambda:[s.replace('density ','density-batch ',1) for s in density_cases()+spline_cases()],
+                    'density-chunk':density_chunk_cases,
+                    'density-data-chunk':lambda:[s.replace('density-data ','density-data-chunk ',1) for s in density_data_cases(path,manifest)],
                     'density-data-batch':lambda:[s.replace('density-data ','density-data-batch ',1) for s in density_data_cases(path,manifest)]}
         inputs=args.cases.read_text().splitlines() if args.cases else generators[args.suite]()
         cases_file=output/'cases.txt'; cases_file.write_text('\n'.join(inputs)+'\n')
         javac=java_tool('javac'); java=java_tool('java')
-        subprocess.run([javac,'-d',str(output),str(ROOT/'tools/oracle/Oracle.java'),str(ROOT/'tools/oracle/NoiseChunkOracle.java'),str(ROOT/'tools/oracle/DensityBatchOracle.java')],check=True)
+        subprocess.run([javac,'-d',str(output),str(ROOT/'tools/oracle/Oracle.java'),str(ROOT/'tools/oracle/NoiseChunkOracle.java'),str(ROOT/'tools/oracle/DensityBatchOracle.java'),str(ROOT/'tools/oracle/NoiseGraphOracle.java')],check=True)
         cp=os.pathsep.join([str(output)]+[str(path/name) for name in manifest['classpath']])
         original=subprocess.run([java,'-cp',cp,'mcps2.oracle.Oracle',str(properties),str(cases_file)],cwd=output,capture_output=True,text=True,check=True)
         native=subprocess.run([str(args.runner.resolve())]+args.runner_arg,input=cases_file.read_text(),capture_output=True,text=True,check=True)
@@ -486,6 +541,13 @@ def main():
                              'NoiseChunk interpolation, aquifers and full chunk generation not yet covered']
             inventory=json.loads((PRIVATE/'density-data/inventory.json').read_text())
             report['graph_counts']=inventory['counts']
+        elif args.suite in ('density-chunk','density-data-chunk'):
+            report['scope']=['original DensityFunction.mapAll visitor and NoiseChunk.wrap',
+                'automatic holder unwrapping, factory specialization and structural/identity cache sharing',
+                'cache registration counts, root bounds, construction and interpolation lifecycle',
+                'point/external contexts, fillArray values and chunk counters']
+            report['limitations']=['EmptyBlender and empty Beardifier; no aquifer/surface/features/blocks emitted',
+                'independent field roots; cross-router binding into one shared visitor is pending']
         elif args.suite=='noise-chunk':
             report['scope']=['original NoiseChunk constructors, five runtime cache wrappers and complete cell/slice lifecycle',
                              'binary64 interpolation (Y/X/Z traversal versus X/Y/Z filling), context identity, counters, bulk callbacks and leaf call trace',

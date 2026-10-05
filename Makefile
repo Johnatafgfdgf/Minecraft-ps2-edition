@@ -21,6 +21,7 @@ help:
 	@echo 'make density-data-parity -> private vanilla JSON graphs against independently seeded original routers'
 	@echo 'make density-batch-parity / density-data-batch-parity -> original fillArray values and call order'
 	@echo 'make noise-chunk-parity -> original chunk caches, interpolation, counters and cell/slice order'
+	@echo 'make density-chunk-parity / density-data-chunk-parity -> automatic original visitor/cache binding'
 	@echo 'make check-public -> reject proprietary/build inputs in tracked files'
 
 ps2:
@@ -30,7 +31,7 @@ build/host/tests: tests/core_tests.cpp $(CORE) $(wildcard include/mcps2/*.hpp)
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/core_tests.cpp $(CORE) -o $@
 
-build/host/parity: tests/parity_runner.cpp tests/density_batch_fixture.hpp $(CORE) $(wildcard include/mcps2/*.hpp)
+build/host/parity: tests/parity_runner.cpp tests/density_batch_fixture.hpp tests/noise_graph_fixture.hpp $(CORE) $(wildcard include/mcps2/*.hpp)
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/parity_runner.cpp $(CORE) -o $@
 
@@ -38,7 +39,7 @@ build/host/registry: tests/registry_runner.cpp $(CORE) $(wildcard include/mcps2/
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/registry_runner.cpp $(CORE) -o $@
 
-build/host/density-data: tests/density_data_runner.cpp tests/density_batch_fixture.hpp $(CORE) $(wildcard include/mcps2/*.hpp)
+build/host/density-data: tests/density_data_runner.cpp tests/density_batch_fixture.hpp tests/noise_graph_fixture.hpp $(CORE) $(wildcard include/mcps2/*.hpp)
 	@mkdir -p $(@D)
 	$(CXX) $(HOST_FLAGS) tests/density_data_runner.cpp $(CORE) -o $@
 
@@ -65,10 +66,15 @@ density-batch-parity: build/host/parity
 density-data-batch-parity: build/host/density-data
 	$(PYTHON) tools/run_parity.py --runner build/host/density-data --suite density-data-batch --output .local/density-data-batch-parity
 
-test: build/host/tests build/host/registry build/host/density-data build/host/noise-chunk-tests build/host/density-batch-tests
+build/host/noise-graph-tests: tests/noise_graph_tests.cpp tests/noise_graph_fixture.hpp $(CORE) $(wildcard include/mcps2/*.hpp)
+	@mkdir -p $(@D)
+	$(CXX) $(HOST_FLAGS) tests/noise_graph_tests.cpp $(CORE) -o $@
+
+test: build/host/noise-graph-tests build/host/tests build/host/registry build/host/density-data build/host/noise-chunk-tests build/host/density-batch-tests
 	./build/host/tests
 	./build/host/noise-chunk-tests
 	./build/host/density-batch-tests
+	./build/host/noise-graph-tests
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py' -v
 
 parity: build/host/parity
@@ -112,3 +118,10 @@ check-public:
 
 clean:
 	rm -rf build
+
+.PHONY: density-chunk-parity density-data-chunk-parity
+density-chunk-parity: build/host/parity
+	$(PYTHON) tools/run_parity.py --runner build/host/parity --suite density-chunk --output .local/density-chunk-parity
+
+density-data-chunk-parity: build/host/density-data
+	$(PYTHON) tools/run_parity.py --runner build/host/density-data --suite density-data-chunk --output .local/density-data-chunk-parity

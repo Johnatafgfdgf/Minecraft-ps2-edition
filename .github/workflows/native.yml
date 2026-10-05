@@ -93,6 +93,8 @@ jobs:
           make density-batch-parity
           make density-data-batch-parity
           make noise-chunk-parity
+          make density-chunk-parity
+          make density-data-chunk-parity
           make check-public
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -113,6 +115,8 @@ jobs:
             .local/density-batch-parity/report.json
             .local/density-data-batch-parity/report.json
             .local/noise-chunk-parity/report.json
+            .local/density-chunk-parity/report.json
+            .local/density-data-chunk-parity/report.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 90

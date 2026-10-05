@@ -11,8 +11,9 @@ End conferidos no domínio de pontos. A camada binary32 usa arredondamento e
 comparações explícitos por bits; o build EE audita seu caminho numérico.
 Os cinco wrappers de NoiseChunk, o ciclo de células e fillArray especializado
 dos grafos foram conferidos em fixtures originais. Inputs explícitos ligam
-operadores aos caches. A integração automática ao router vanilla e geração de
-chunks completos estão pendentes.
+operadores aos caches. O visitor automático por campo, com compartilhamento por
+igualdade/identidade, foi comparado aos 105 campos vanilla em seis seeds. A
+ligação compartilhada de todos os campos e geração de chunks completos estão pendentes.
 A plataforma compila para EE e ainda
 precisa de boot em equipamento. Dados exportados não substituem gameplay.
 
@@ -22,8 +23,8 @@ precisa de boot em equipamento. Dados exportados não substituem gameplay.
    análise própria. Validar a pipeline de assets com um cliente legítimo fornecido.
 2. Completar paletas, seções, cache/streaming, arenas e save codec. Testar eviction
    sem perda de estado, scheduled ticks, fluid ticks e block entities.
-3. Portar visitor/deduplicação de NoiseChunk e integrar automaticamente
-   seus wrappers já conferidos aos routers ligados à seed; portar aquifers.
+3. Integrar os 15 campos do router em uma ligação compartilhada, preservando
+   identidades entre campos; o visitor por campo já foi conferido. Portar aquifers.
    Completar gaussian, demais noises e núcleo numérico
    necessário; integrar biome source, carvers, surface rules, features e
    estruturas, comparando chunks com o original em cada fase.

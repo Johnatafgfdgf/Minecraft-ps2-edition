@@ -15,14 +15,16 @@ material permanece privado em `.local/`; o código deste runtime é independente
 | `Cache2D` | Uma posição X/Z e seu último valor | `NoiseCacheKind::column` | Chave, sentinel e bypass no fillArray comparados |
 | `CacheOnce` | Última amostra e último array por contador do proprietário | `NoiseCacheKind::once` | Identidade do contexto, prioridade do array, cópia e contadores comparados |
 | `CacheAllInCell` | Valores de uma célula, indexados em Y descendente, X, Z | `NoiseCacheKind::cell` | Preenchimento, estado inativo e fallback comparados |
-| `DensityFunction` usado como filler | Sampling do campo ligado à seed e avaliação em lote | `NoiseChunkFunction`, `NoiseChunkDensityField`, `NoiseChunkDensityInput` | Fill especializado e inputs explícitos de caches comparados; visitor automático pendente |
-| `NoiseChunk.wrap` / visitor | Substitui markers, desempacota holders e compartilha wrappers por igualdade | Futuro visitor do router | Pendente; não confundir fixtures de wrappers com router vanilla completo |
+| `DensityFunction` usado como filler | Sampling do campo ligado à seed e avaliação em lote | `NoiseChunkFunction`, `NoiseChunkDensityField`, `NoiseChunkDensityInput` | Fill especializado, inputs de caches e ligação automática por campo comparados |
+| `NoiseChunk.wrap` / visitor | Substitui markers, desempacota holders e compartilha wrappers por igualdade | `NoiseChunkGraph`, arenas de planning e execução | Comparado em 272 grafos próprios e 105 campos vanilla × 6 seeds; binding compartilhado dos 15 campos de um router ainda pendente |
 | Aquifer, beardifier, Blender de saves, ore rule | Converte densidade em estados de blocos e mistura versões | Futuros estágios do worldgen | Pendentes; este runtime não produz chunks de blocos |
 
 Os cinco wrappers conservam os limites mínimo/máximo do filler. Os valores
-interpolados podem diferir dos valores de ponto do mesmo grafo. MCDG v2 continua
-declarando domínio de **SinglePointContext**: carregar um pack e ignorar seus
-markers não constitui o pipeline de chunks.
+interpolados podem diferir dos valores de ponto do mesmo grafo. Um grafo MCDG v3
+pode ser avaliado em **SinglePointContext** ou ligado explicitamente ao
+`NoiseChunkGraph`. Somente a segunda opção substitui seus markers por caches.
+Packs v2 continuam legíveis para pontos, mas são recusados pelo runner de ligação:
+não conservam o tipo de uma spline constante sem ambiguidade.
 
 ## Ciclo analisado
 
@@ -102,8 +104,62 @@ sentido inverso, preservando identidade, valores em lote e erros. Inputs no EE
 ocupam 32 bytes, e a ponte de input ocupa 16. Workspaces de fillers aninhados
 precisam ser separados; a ponte de campo inclui apenas um frame para um grafo
 folha. Grafos maiores devem fornecer os frames necessários explicitamente.
-O visitor original ainda precisa aplicar markers/holders e compartilhar wrappers
-por igualdade ao router vanilla. As fixtures fazem ligações explícitas.
+O `NoiseChunkGraph` faz essa ligação automaticamente para um campo. As fixtures
+anteriores com wrappers explícitos continuam como testes independentes.
+
+
+## Visitor automático — análise e implementação
+
+O caminho original é `DensityFunction.mapAll(visitor)` → transformação dos
+filhos → `NoiseChunk.wrap` → consulta do mapa de funções → `wrapNew` quando a
+chave não existe. O oracle chama esse caminho no JAR, sem reproduzi-lo em Java.
+
+| Componente / decisão original | Equivalente nativo | Estado e diferença |
+| --- | --- | --- |
+| MarkerOrMarked transforma o filho antes de construir um novo Marker | DFS em arena, na ordem dos filhos e pontos das splines | Sem recursão no traversal do grafo |
+| wrapNew substitui os cinco tipos de Marker | Plano `NoiseGraphCache`, seguido por `NoiseChunk.wrap` | FlatCache é avaliado somente na ativação, na ordem de construção original |
+| HolderHolder transforma seu valor e é desempacotado por wrapNew | Reference vira o ID do filho transformado | Não permanece como nó de encaminhamento no grafo ligado |
+| Ap2 transforma filhos e reaplica a factory | `DensityGraph::append` após transformar os IDs | Um holder que revela uma Constant pode mudar a especialização |
+| Mapped e MulOrAdd transformam filhos sem apply ao próprio nó | Recalcular bounds; `append_transformed` conserva o argumento de MulOrAdd | Não recriar MulOrAdd pela factory binária nem trocar operandos constantes |
+| Igualdade de records inclui tipos, propriedades e filhos transformados | IDs canônicos e tabela hash em arena | +0 e -0 distintos; NaN comparado como Double Java |
+| BlendedNoise e EndIslandDensityFunction usam identidade de objeto | Origem pelo ID do nó fonte | Valores/seeds iguais não autorizam compartilhar wrappers de objetos distintos |
+| CubicSpline.Multipoint retém as arrays de locations/derivatives no mapAll | Identidade pelo descritor de spline fonte | Descritores com conteúdo igual e origens diferentes permanecem distintos |
+| Spline de CubicSpline.Constant não é DensityFunctions.Constant | Opcode `spline_constant` do MCDG v3 | Bounds/value binary32 e fill direto; não usar o atalho da factory de Constant |
+
+A ligação atual cobre **EmptyBlender e Beardifier vazio**. BlendAlpha,
+BlendOffset e BeardifierMarker conservam o comportamento dessa referência.
+As substituições por caches de blending de saves e pelo beardifier de estruturas
+precisam de implementação própria antes de integrar essas condições.
+
+O chamador constrói um controlador estável e executa:
+
+1. `prepare(root, largest_array)`: percorre somente os nós alcançáveis, copia
+   descritores de spline com IDs transformados, compartilha chaves iguais e
+   calcula os tamanhos. Não executa fillers nem modifica o chunk.
+2. `requirements()`: entrega quantidades de wrappers, doubles, frames de
+   ponto/lote e temporários. A soma dos tamanhos e seus bytes é verificada para
+   overflow de `size_t`, inclusive no EE de 32 bits.
+3. Reservar todos os buffers e chamar `activate(workspace)`. Falta de memória
+   ou de slots do chunk é recusada antes de avaliar FlatCache; é possível
+   tentar novamente com buffers suficientes. Falha de callback durante a
+   construção exige descartar o controlador/chunk parcialmente ativado.
+4. Usar `function()` como campo para sample/fill, seguindo o ciclo do chunk.
+
+Cada filler de cache recebe pilhas e scratch próprios para permitir chamadas
+aninhadas. A função raiz recebe outro workspace. Os buffers não se sobrepõem e
+seus endereços ficam estáveis; o controlador não é copiável. O grafo fonte e seus
+recursos também devem conservar os tipos/origens: reutilizar um ID representa a
+mesma função original, e reutilizar um descritor representa as mesmas arrays.
+Inputs externos usam seu índice como identidade. Recursos de ruído são
+canônicos dentro do grafo fonte ligado a uma seed.
+
+No EE fixado: chave **64 B**, frame de planning **8 B**, plano de cache **88 B**,
+controlador **224 B**, descritor de arena **72 B**. Esses valores não incluem os
+nós, inputs, pontos, buffers e frames, nem os pools de ruído. A tabela hash usa
+slots em potência de dois, no mínimo 2×N; as demais arenas de planning usam
+capacidades documentadas no header. Não há alocação por ponto ou por fill.
+São budgets estruturais; o custo e o orçamento de um mundo jogável ainda
+precisam ser medidos no console.
 
 ## Comparação
 
@@ -129,3 +185,27 @@ Os testes de recursos verificam falta de arena/buffer antes de executar fillers,
 canários, overflow de geometria, workspace e ponte com DensityGraph. Um probe
 pequeno dessa ponte foi incluído no ELF; a suíte completa e seu custo ainda
 precisam ser medidos no PS2 real. Build EE não comprova boot ou 30 FPS.
+
+`make density-chunk-parity`: **272 cenários / 151.776 registros iguais**.
+Inclui holders que mudam factories, MulOrAdd com dois operandos constantes,
+Spline constante versus Constant, records iguais, zeros com sinal/NaN,
+identidade de objetos End com a mesma seed, origem das arrays de splines,
+markers não alcançáveis, composição dos cinco caches e 128 grafos aleatórios.
+Compara contagens dos caches construídos, limites, valores, épocas e trace de
+folhas próprias. Não compara o número de entradas internas do HashMap original.
+
+`make density-data-chunk-parity`: **630 cenários / 351.540 registros iguais**.
+Aplica o visitor original aos 105 campos dos sete noise settings, com seis
+seeds; o oracle cria seus próprios RandomState/registries e não lê o MCDG.
+O nativo lê o pack v3, prepara e ativa seus wrappers automaticamente. O ciclo
+inclui dois níveis Y de célula, coordenadas negativas/distantes/extremas,
+contextos externos, repetição, arrays de célula e célula+1, troca de slices,
+parada e reinício. Os arrays fornecidos aos providers respeitam sua extensão;
+guardas de buffers menores são verificadas pelos testes nativos.
+
+Cada campo é ligado a um chunk de teste independente, com Blender/beardifier
+vazios e geometria pequena. Compartilhar os 15 campos em uma ligação única,
+aquifer, materiais, carvers, superfície, features e estruturas permanecem
+etapas posteriores. Não são testes de chunks finais de blocos. Reports e
+entradas completas ficam privados em `.local/density-chunk-parity/` e
+`.local/density-data-chunk-parity/`; o CI publica somente os reports próprios.

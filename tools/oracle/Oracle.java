@@ -45,7 +45,7 @@ public final class Oracle {
     }
     static Object vanillaLookup=null;
     static final Map<String,Object> randomStates=new HashMap<>();
-    static void densityData(String[] f) throws Exception {
+    static Object densityDataField(String[] f) throws Exception {
         ensureBootstrap();
         if (vanillaLookup==null) {
             Object lookup=staticCall("Vanilla.lookup","Vanilla",NONE);
@@ -62,6 +62,10 @@ public final class Oracle {
         }
         Object router=call("RandomState.router",state,NONE);
         Object field=method("Router."+f[2],type("Router")).invoke(router);
+        return field;
+    }
+    static void densityData(String[] f) throws Exception {
+        Object field=densityDataField(f);
         emit("density-data-bounds " + h64(Double.doubleToLongBits((double)densityCall("Density.min",field,NONE)))
             + " " + h64(Double.doubleToLongBits((double)densityCall("Density.max",field,NONE))));
         if (f[0].equals("density-data-batch")) { DensityBatchOracle.observe(field,Integer.parseInt(f[4]),new long[]{0});return; }
@@ -73,10 +77,10 @@ public final class Oracle {
             emit("density-data " + i + " " + h64(Double.doubleToLongBits(value)));
         }
     }
-    static void density(String[] f) throws Exception {
+    static Object[] densityNodes(String[] f,long[] trace,boolean emitBounds) throws Exception {
         ensureBootstrap();
         int count=Integer.parseInt(f[1]),root=Integer.parseInt(f[2]),samples=Integer.parseInt(f[3]);
-        Object[] nodes=new Object[count],cubicNodes=new Object[count]; long[] trace={0};
+        Object[] nodes=new Object[count],cubicNodes=new Object[count];
         List<float[]> locations=new ArrayList<>(),derivatives=new ArrayList<>();List<int[]> valueIds=new ArrayList<>();
         int tail=4+count*8;
         if (tail<f.length) {
@@ -117,10 +121,28 @@ public final class Oracle {
                         trace[0]=trace[0]*0x100000001b3L ^ (id+1);
                         int y=(int)method("Context.y",type("FunctionContext")).invoke(args[0]); return y<fy?p0:p1;
                     }
+                    if (m.getName().equals(symbols.getProperty("Density.map")) && m.getParameterCount()==1 && type("Visitor").isInstance(args[0]))
+                        return method("Visitor.apply",type("Visitor"),d).invoke(args[0],proxy);
+                    if (m.getName().equals("equals")) return proxy==args[0];
+                    if (m.getName().equals("hashCode")) return System.identityHashCode(proxy);
                     if (m.getName().equals("toString")) return "InstrumentedDensityLeaf";
                     if (m.isDefault()) return InvocationHandler.invokeDefault(proxy,m,args==null?new Object[0]:args);
                     throw new UnsupportedOperationException(m.toString());
                 });
+            } else if (op>=23 && op<=27) {
+                Field enumField=type("MarkerType").getField(symbols.getProperty("Marker.kind."+op));enumField.setAccessible(true);
+                Object kind=enumField.get(null);
+                Constructor<?> ctor=type("Marker").getDeclaredConstructor(type("MarkerType"),d);ctor.setAccessible(true);
+                nodes[i]=ctor.newInstance(kind,nodes[a]);
+            } else if (op==31) {
+                Object holder=staticCall("Holder.direct","Holder",new Class<?>[]{Object.class},nodes[a]);
+                Constructor<?> ctor=type("HolderHolder").getDeclaredConstructor(type("Holder"));ctor.setAccessible(true);
+                nodes[i]=ctor.newInstance(holder);
+            } else if (op==36) {
+                cubicNodes[i]=staticCall("Cubic.constant","Cubic",new Class<?>[]{float.class},(float)p0);
+                nodes[i]=staticCall("Functions.spline","Functions",new Class<?>[]{type("Cubic")},cubicNodes[i]);
+            } else if (op==34) {
+                Constructor<?> ctor=type("End").getDeclaredConstructor(long.class);ctor.setAccessible(true);nodes[i]=ctor.newInstance(0L);
             } else if (op==35) {
                 Object holder=staticCall("Holder.direct","Holder",new Class<?>[]{Object.class},nodes[a]);
                 Constructor<?> constructor=type("SplineCoordinate").getDeclaredConstructor(type("Holder"));constructor.setAccessible(true);
@@ -130,9 +152,14 @@ public final class Oracle {
                 create.setAccessible(true);cubicNodes[i]=create.invoke(null,coordinate,locations.get(fy),values,derivatives.get(fy));
                 nodes[i]=staticCall("Functions.spline","Functions",new Class<?>[]{type("Cubic")},cubicNodes[i]);
             } else throw new IllegalArgumentException("Unsupported density op " + op);
-            emit("density-bounds " + i + " " + h64(Double.doubleToLongBits((double)densityCall("Density.min",nodes[i],NONE)))
+            if (emitBounds) emit("density-bounds " + i + " " + h64(Double.doubleToLongBits((double)densityCall("Density.min",nodes[i],NONE)))
                 + " " + h64(Double.doubleToLongBits((double)densityCall("Density.max",nodes[i],NONE))));
         }
+        return nodes;
+    }
+    static void density(String[] f) throws Exception {
+        int root=Integer.parseInt(f[2]),samples=Integer.parseInt(f[3]);long[] trace={0};
+        Object[] nodes=densityNodes(f,trace,true);
         if (f[0].equals("density-batch")) { DensityBatchOracle.observe(nodes[root],samples,trace);return; }
         int[] edges={-1024,-65,-64,-1,0,1,23,24,103,104,127,128,239,240,256,320};
         for (int i=0;i<samples;++i) {
@@ -452,6 +479,8 @@ public final class Oracle {
                     case "density-batch": density(f); break;
                     case "density-data": densityData(f); break;
                     case "density-data-batch": densityData(f); break;
+                    case "density-chunk": NoiseGraphOracle.run(f,false); break;
+                    case "density-data-chunk": NoiseGraphOracle.run(f,true); break;
                     case "chunk": NoiseChunkOracle.run(f); break;
                     case "rng": rng(f); break;
                     case "pos": position(f); break;

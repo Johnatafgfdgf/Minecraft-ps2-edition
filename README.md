@@ -29,6 +29,7 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - Splines Hermite com valores aninhados, limites binary32 e avaliação sem recursão.
 - Ligação dos ruídos à seed; conversor/leitor MCDG de todos os 105 campos vanilla, comparados ao RandomState original.
 - Cinco caches de NoiseChunk, interpolação e ciclo de células com buffers externos e ponte para campos de densidade.
+- Visitor automático de NoiseChunk por campo: markers/holders, compartilhamento e factories, com arenas fixas; comparado aos 105 campos vanilla.
 - Avaliação fillArray dos operadores, com scratch externo e ordem original de callbacks; inputs explícitos de caches ligados ao grafo.
 - Coordenadas BlockPos/SectionPos/ChunkPos e layout SimpleBitStorage.
 - Fila de ticks pendentes por chunk, com identidade, deduplicação e prioridades.
@@ -37,10 +38,10 @@ de uma instalação legítima; a análise inicial das regras pode usar o servido
 - Registro nativo de todos os block states/propriedades e transições equivalentes.
 - Gerador privado de registries, world data pack e conversão de texturas pessoais.
 
-**Paridade no host:** **1.386.745 resultados coincidentes** com chamadas ao servidor
-original 1.21.1 em treze suítes: primitivas, block states, ImprovedNoise, factories,
+**Paridade no host:** **1.890.061 resultados coincidentes** com chamadas ao servidor
+original 1.21.1 em quinze suítes: primitivas, block states, ImprovedNoise, factories,
 Perlin/Normal, BlendedNoise, Simplex/End, operações, splines, dados de densidade,
-NoiseChunk e avaliação em lote sintética/vanilla.
+NoiseChunk, avaliação em lote sintética/vanilla e visitor de ligação sintético/vanilla.
 Os testes numéricos comparam bits de float/double sem tolerância;
 os testes de densidade/Simplex normalizam somente payloads de NaN.
 Todos os 26.684 estados também foram conferidos contra o report do jogo.
@@ -49,7 +50,7 @@ binary32 nativa, cujo caminho compilado para EE é auditado para evitar depender
 de operações single-precision do console nas splines e ilhas do End.
 Isso não valida geração completa, redstone, física nem execução no console.
 O ELF foi compilado para Emotion Engine; boot e desempenho em PS2/PCSX2 ainda
-precisam ser medidos. Dezessete probes pequenos executam no ELF e mostram sua máscara
+precisam ser medidos. Dezoito probes pequenos executam no ELF e mostram sua máscara
 de aprovação; não substituem a suíte completa.
 
 ```sh

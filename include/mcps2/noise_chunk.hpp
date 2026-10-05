@@ -70,6 +70,8 @@ public:
     NoiseChunk(const NoiseChunk&) = delete;
     NoiseChunk& operator=(const NoiseChunk&) = delete;
     NoiseChunkResult status() const noexcept { return status_; }
+    size_t cache_count() const noexcept { return count_; }
+    size_t cache_capacity() const noexcept { return capacity_; }
     size_t required_values(NoiseCacheKind kind) const noexcept;
     NoiseChunkResult wrap(NoiseCacheKind kind, NoiseChunkFunction child,
                           double* buffer, size_t capacity, NoiseCache*& cache,
@@ -113,7 +115,7 @@ private:
 };
 
 // Bridge for bound DensityGraph fields, including checked cache input bindings.
-// This does not run the vanilla router visitor or rewrite pack markers.
+// NoiseChunkGraph can automatically bind markers; this field itself does not.
 // Workspaces are single-use; nested cache fillers need separate arenas. The
 // inline batch frame only covers a leaf field; larger graphs require a buffer.
 struct NoiseChunkDensityField {
